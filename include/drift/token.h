@@ -13,6 +13,8 @@ typedef enum {
     TOKEN_STRING,
     TOKEN_TRUE,
     TOKEN_FALSE,
+    TOKEN_NULL,
+    TOKEN_INFINITY,
     TOKEN_NEWLINE,
     TOKEN_EOF,
     TOKEN_UNKNOWN

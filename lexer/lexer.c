@@ -92,14 +92,24 @@ static Token read_identifier(Lexer *lexer)
         return make_token(TOKEN_VAR, drift_duplicate_string("var"));
     }
 
-    if (strcmp(value, "true") == 0) {
+    if (strcmp(value, "true") == 0 || strcmp(value, "TRUE") == 0) {
         free(value);
         return make_token(TOKEN_TRUE, drift_duplicate_string("true"));
     }
 
-    if (strcmp(value, "false") == 0) {
+    if (strcmp(value, "false") == 0 || strcmp(value, "FALSE") == 0) {
         free(value);
         return make_token(TOKEN_FALSE, drift_duplicate_string("false"));
+    }
+
+    if (strcmp(value, "NULL") == 0 || strcmp(value, "null") == 0) {
+        free(value);
+        return make_token(TOKEN_NULL, drift_duplicate_string("NULL"));
+    }
+
+    if (strcmp(value, "INF") == 0 || strcmp(value, "inf") == 0) {
+        free(value);
+        return make_token(TOKEN_INFINITY, drift_duplicate_string("INF"));
     }
 
     return make_token(TOKEN_IDENTIFIER, value);

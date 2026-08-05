@@ -58,6 +58,15 @@ static Value parse_literal_value(Token *token)
         char *end = NULL;
         long value = strtol(token->value, &end, 10);
         (void)end;
+
+        if (value == 1) {
+            return value_create_boolean(1);
+        }
+
+        if (value == 0) {
+            return value_create_boolean(0);
+        }
+
         return value_create_integer(value);
     }
 
@@ -91,6 +100,14 @@ static Value parse_literal_value(Token *token)
 
     if (token->type == TOKEN_FALSE) {
         return value_create_boolean(0);
+    }
+
+    if (token->type == TOKEN_NULL) {
+        return value_create_null();
+    }
+
+    if (token->type == TOKEN_INFINITY) {
+        return value_create_infinity();
     }
 
     return value_create_string(NULL);
@@ -323,7 +340,9 @@ Statement parser_parse(Parser *parser)
              token->type != TOKEN_FLOAT &&
              token->type != TOKEN_STRING &&
              token->type != TOKEN_TRUE &&
-             token->type != TOKEN_FALSE)) {
+             token->type != TOKEN_FALSE &&
+             token->type != TOKEN_NULL &&
+             token->type != TOKEN_INFINITY)) {
             fprintf(stderr, "Syntax Error: Expected value after '='.\n");
             free(variable_declaration.name);
             variable_declaration.name = NULL;

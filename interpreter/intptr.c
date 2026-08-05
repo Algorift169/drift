@@ -23,6 +23,12 @@ static void print_value(const Value *value)
         case VALUE_BOOLEAN:
             printf(value->boolean_value ? "true" : "false");
             break;
+        case VALUE_NULL:
+            printf("null");
+            break;
+        case VALUE_INFINITY:
+            printf("infinity");
+            break;
         default:
             break;
     }
@@ -96,6 +102,10 @@ static char *interpolate_template(const char *template, Environment *environment
                 snprintf(formatted, 128, "%s", value.string_value ? value.string_value : "");
             } else if (value.type == VALUE_BOOLEAN) {
                 snprintf(formatted, 128, "%s", value.boolean_value ? "true" : "false");
+            } else if (value.type == VALUE_NULL) {
+                snprintf(formatted, 128, "null");
+            } else if (value.type == VALUE_INFINITY) {
+                snprintf(formatted, 128, "infinity");
             }
             value_free(&value);
 

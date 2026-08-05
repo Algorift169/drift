@@ -5,7 +5,9 @@ typedef enum {
     VALUE_INTEGER,
     VALUE_FLOAT,
     VALUE_STRING,
-    VALUE_BOOLEAN
+    VALUE_BOOLEAN,
+    VALUE_NULL,
+    VALUE_INFINITY
 } ValueType;
 
 typedef struct {
@@ -20,6 +22,8 @@ Value value_create_integer(long value);
 Value value_create_float(double value);
 Value value_create_string(const char *value);
 Value value_create_boolean(int value);
+Value value_create_null(void);
+Value value_create_infinity(void);
 Value value_copy(const Value *value);
 void value_free(Value *value);
 

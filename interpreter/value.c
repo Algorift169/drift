@@ -1,3 +1,4 @@
+#include <math.h>
 #include <stdlib.h>
 #include <string.h>
 
@@ -56,6 +57,28 @@ Value value_create_boolean(int value)
     return result;
 }
 
+Value value_create_null(void)
+{
+    Value result;
+    result.type = VALUE_NULL;
+    result.integer_value = 0;
+    result.float_value = 0.0;
+    result.string_value = NULL;
+    result.boolean_value = 0;
+    return result;
+}
+
+Value value_create_infinity(void)
+{
+    Value result;
+    result.type = VALUE_INFINITY;
+    result.integer_value = 0;
+    result.float_value = INFINITY;
+    result.string_value = NULL;
+    result.boolean_value = 0;
+    return result;
+}
+
 Value value_copy(const Value *value)
 {
     Value result;
@@ -77,6 +100,12 @@ Value value_copy(const Value *value)
         case VALUE_BOOLEAN:
             result = value_create_boolean(value->boolean_value);
             break;
+        case VALUE_NULL:
+            result = value_create_null();
+            break;
+        case VALUE_INFINITY:
+            result = value_create_infinity();
+            break;
         default:
             result = value_create_string(NULL);
             break;
@@ -93,7 +122,7 @@ void value_free(Value *value)
 
     free(value->string_value);
     value->string_value = NULL;
-    value->type = VALUE_STRING;
+    value->type = VALUE_NULL;
     value->integer_value = 0;
     value->float_value = 0.0;
     value->boolean_value = 0;
