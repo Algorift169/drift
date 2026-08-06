@@ -17,12 +17,12 @@ static int is_newline(char c)
 
 static int is_identifier_start(char c)
 {
-    return isalpha((unsigned char)c) || c == '_';
+    return isalpha((unsigned char)c) || c == '_' || c == '-';
 }
 
 static int is_identifier_part(char c)
 {
-    return isalnum((unsigned char)c) || c == '_';
+    return isalnum((unsigned char)c) || c == '_' || c == '-';
 }
 
 static Token make_token(TokenType type, char *value)
@@ -297,6 +297,33 @@ Token *lexer_scan_all(Lexer *lexer, size_t *token_count)
 
         if (lexer->source[lexer->index] == '=') {
             tokens[count++] = make_token(TOKEN_EQUAL, drift_duplicate_string("="));
+            lexer->index++;
+        } else if (lexer->source[lexer->index] == '{') {
+            tokens[count++] = make_token(TOKEN_LEFT_BRACE, drift_duplicate_string("{"));
+            lexer->index++;
+        } else if (lexer->source[lexer->index] == '}') {
+            tokens[count++] = make_token(TOKEN_RIGHT_BRACE, drift_duplicate_string("}"));
+            lexer->index++;
+        } else if (lexer->source[lexer->index] == '[') {
+            tokens[count++] = make_token(TOKEN_LEFT_BRACKET, drift_duplicate_string("["));
+            lexer->index++;
+        } else if (lexer->source[lexer->index] == ']') {
+            tokens[count++] = make_token(TOKEN_RIGHT_BRACKET, drift_duplicate_string("]"));
+            lexer->index++;
+        } else if (lexer->source[lexer->index] == '(') {
+            tokens[count++] = make_token(TOKEN_LEFT_PAREN, drift_duplicate_string("("));
+            lexer->index++;
+        } else if (lexer->source[lexer->index] == ')') {
+            tokens[count++] = make_token(TOKEN_RIGHT_PAREN, drift_duplicate_string(")"));
+            lexer->index++;
+        } else if (lexer->source[lexer->index] == ',') {
+            tokens[count++] = make_token(TOKEN_COMMA, drift_duplicate_string(","));
+            lexer->index++;
+        } else if (lexer->source[lexer->index] == ';') {
+            tokens[count++] = make_token(TOKEN_SEMICOLON, drift_duplicate_string(";"));
+            lexer->index++;
+        } else if (lexer->source[lexer->index] == '.') {
+            tokens[count++] = make_token(TOKEN_DOT, drift_duplicate_string("."));
             lexer->index++;
         } else if (lexer->source[lexer->index] == '\'') {
             Token token = read_single_quoted_value(lexer);

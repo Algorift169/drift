@@ -7,7 +7,7 @@
 #include "drift/statement.h"
 #include "drift/token.h"
 
-typedef struct {
+typedef struct Parser {
     Token *tokens;
     size_t count;
     size_t index;

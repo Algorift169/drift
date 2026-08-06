@@ -2,6 +2,7 @@
 #include <stdlib.h>
 #include <string.h>
 
+#include "drift/array_value.h"
 #include "drift/value.h"
 
 Value value_create_integer(long value)
@@ -79,6 +80,18 @@ Value value_create_infinity(void)
     return result;
 }
 
+Value value_create_array(ArrayValue *value)
+{
+    Value result;
+    result.type = VALUE_ARRAY;
+    result.integer_value = 0;
+    result.float_value = 0.0;
+    result.string_value = NULL;
+    result.boolean_value = 0;
+    result.array_value = value;
+    return result;
+}
+
 Value value_copy(const Value *value)
 {
     Value result;
@@ -106,6 +119,14 @@ Value value_copy(const Value *value)
         case VALUE_INFINITY:
             result = value_create_infinity();
             break;
+        case VALUE_ARRAY:
+            result.type = VALUE_ARRAY;
+            result.array_value = array_value_copy(value->array_value);
+            result.integer_value = 0;
+            result.float_value = 0.0;
+            result.string_value = NULL;
+            result.boolean_value = 0;
+            break;
         default:
             result = value_create_string(NULL);
             break;
@@ -118,6 +139,11 @@ void value_free(Value *value)
 {
     if (value == NULL) {
         return;
+    }
+
+    if (value->type == VALUE_ARRAY) {
+        array_value_free(value->array_value);
+        value->array_value = NULL;
     }
 
     free(value->string_value);
