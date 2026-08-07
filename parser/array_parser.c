@@ -8,7 +8,26 @@
 #include "drift/array_value.h"
 
 static Token *parser_peek(Parser *parser);
+static Token *parser_peek_next(Parser *parser);
 static Token *parser_advance(Parser *parser);
+
+static int compare_dimensions(const long *first, const long *second, size_t count);
+static int parse_dynamic_initializer_values(Parser *parser, ValueType *element_type, Value **out_values, size_t *out_count);
+static int parse_dynamic_initializer_level(Parser *parser,
+                                           size_t level,
+                                           size_t dimension_count,
+                                           const long *declared_dimensions,
+                                           long *out_dimensions,
+                                           ValueType *element_type,
+                                           Value **out_values,
+                                           size_t *out_count);
+static int parse_dynamic_multi_dimensional_initializer(Parser *parser,
+                                                      size_t dimension_count,
+                                                      const long *declared_dimensions,
+                                                      long *out_dimensions,
+                                                      ValueType *element_type,
+                                                      Value **out_values,
+                                                      size_t *out_count);
 
 static int parse_integer_token(Token *token, long *out_value)
 {
@@ -291,7 +310,17 @@ static int parse_array_dimensions(Parser *parser, long **out_dimensions, size_t 
         if (token != NULL && token->type == TOKEN_RIGHT_BRACKET) {
             parser_advance(parser);
             dynamic_declaration = 1;
-            break;
+
+            long *new_dimensions = (long *)realloc(dimensions, (count + 1U) * sizeof(long));
+            if (new_dimensions == NULL) {
+                fprintf(stderr, "Error: out of memory while parsing array dimensions\n");
+                free(dimensions);
+                *error = 1;
+                return 0;
+            }
+            dimensions = new_dimensions;
+            dimensions[count++] = 0;
+            continue;
         }
 
         if (token == NULL || token->type != TOKEN_INTEGER) {
@@ -380,6 +409,398 @@ static int parse_multi_dimensional_initializer(Parser *parser,
 
     *out_values = values;
     *out_count = count;
+    return 1;
+}
+
+static Token *parser_peek_next(Parser *parser)
+{
+    if (parser->index + 1 >= parser->count) {
+        return NULL;
+    }
+    return &parser->tokens[parser->index + 1];
+}
+
+static int compare_dimensions(const long *first, const long *second, size_t count)
+{
+    for (size_t i = 0; i < count; ++i) {
+        if (first[i] != second[i]) {
+            return 0;
+        }
+    }
+    return 1;
+}
+
+static int parse_dynamic_initializer_level(Parser *parser,
+                                           size_t level,
+                                           size_t dimension_count,
+                                           const long *declared_dimensions,
+                                           long *out_dimensions,
+                                           ValueType *element_type,
+                                           Value **out_values,
+                                           size_t *out_count)
+{
+    if (level + 1 == dimension_count) {
+        if (!parse_dynamic_initializer_values(parser, element_type, out_values, out_count)) {
+            return 0;
+        }
+
+        if (declared_dimensions[level] != 0 && *out_count != (size_t)declared_dimensions[level]) {
+            fprintf(stderr, "Syntax Error: Expected %ld elements but found %zu.\n", declared_dimensions[level], *out_count);
+            for (size_t i = 0; i < *out_count; ++i) {
+                value_free(&(*out_values)[i]);
+            }
+            free(*out_values);
+            return 0;
+        }
+
+        out_dimensions[level] = (long)*out_count;
+        return 1;
+    }
+
+    Value *values = NULL;
+    size_t count = 0;
+    size_t child_count = 0;
+    long *expected_child_dimensions = NULL;
+    size_t child_dim_count = dimension_count - (level + 1);
+
+    while (1) {
+        Token *token = parser_peek(parser);
+        if (token == NULL) {
+            fprintf(stderr, "Syntax Error: Unterminated array initializer.\n");
+            for (size_t i = 0; i < count; ++i) {
+                value_free(&values[i]);
+            }
+            free(values);
+            free(expected_child_dimensions);
+            return 0;
+        }
+
+        if (token->type == TOKEN_RIGHT_BRACE) {
+            break;
+        }
+
+        if (token->type != TOKEN_LEFT_BRACE) {
+            fprintf(stderr, "Syntax Error: Expected '{' in nested array initializer.\n");
+            for (size_t i = 0; i < count; ++i) {
+                value_free(&values[i]);
+            }
+            free(values);
+            free(expected_child_dimensions);
+            return 0;
+        }
+
+        parser_advance(parser);
+
+        long *child_dimensions = (long *)calloc(dimension_count, sizeof(long));
+        if (child_dimensions == NULL) {
+            fprintf(stderr, "Error: out of memory while parsing array initializer\n");
+            for (size_t i = 0; i < count; ++i) {
+                value_free(&values[i]);
+            }
+            free(values);
+            free(expected_child_dimensions);
+            return 0;
+        }
+
+        Value *child_values = NULL;
+        size_t child_value_count = 0;
+        if (!parse_dynamic_initializer_level(parser, level + 1, dimension_count, declared_dimensions, child_dimensions, element_type, &child_values, &child_value_count)) {
+            free(child_dimensions);
+            for (size_t i = 0; i < count; ++i) {
+                value_free(&values[i]);
+            }
+            free(values);
+            free(expected_child_dimensions);
+            return 0;
+        }
+
+        if (child_count == 0) {
+            expected_child_dimensions = (long *)malloc(child_dim_count * sizeof(long));
+            if (expected_child_dimensions == NULL) {
+                fprintf(stderr, "Error: out of memory while parsing array initializer\n");
+                for (size_t i = 0; i < child_value_count; ++i) {
+                    value_free(&child_values[i]);
+                }
+                free(child_values);
+                free(child_dimensions);
+                for (size_t i = 0; i < count; ++i) {
+                    value_free(&values[i]);
+                }
+                free(values);
+                return 0;
+            }
+            memcpy(expected_child_dimensions, child_dimensions + (level + 1), child_dim_count * sizeof(long));
+            memcpy(out_dimensions + (level + 1), child_dimensions + (level + 1), child_dim_count * sizeof(long));
+        } else if (!compare_dimensions(expected_child_dimensions, child_dimensions + (level + 1), child_dim_count)) {
+            fprintf(stderr, "Syntax Error: Inconsistent nested array dimensions.\n");
+            for (size_t i = 0; i < child_value_count; ++i) {
+                value_free(&child_values[i]);
+            }
+            free(child_values);
+            free(child_dimensions);
+            free(expected_child_dimensions);
+            for (size_t i = 0; i < count; ++i) {
+                value_free(&values[i]);
+            }
+            free(values);
+            return 0;
+        }
+        free(child_dimensions);
+
+        Value *new_values = (Value *)realloc(values, (count + child_value_count) * sizeof(Value));
+        if (new_values == NULL) {
+            fprintf(stderr, "Error: out of memory while parsing array initializer\n");
+            for (size_t i = 0; i < child_value_count; ++i) {
+                value_free(&child_values[i]);
+            }
+            free(child_values);
+            free(expected_child_dimensions);
+            for (size_t i = 0; i < count; ++i) {
+                value_free(&values[i]);
+            }
+            free(values);
+            return 0;
+        }
+
+        values = new_values;
+        for (size_t i = 0; i < child_value_count; ++i) {
+            values[count + i] = child_values[i];
+        }
+        count += child_value_count;
+        child_count++;
+        free(child_values);
+
+        token = parser_peek(parser);
+        if (token != NULL && token->type == TOKEN_COMMA) {
+            parser_advance(parser);
+            continue;
+        }
+
+        if (token != NULL && token->type == TOKEN_RIGHT_BRACE) {
+            continue;
+        }
+
+        fprintf(stderr, "Syntax Error: Expected ',' or '}' in array initializer.\n");
+        for (size_t i = 0; i < count; ++i) {
+            value_free(&values[i]);
+        }
+        free(values);
+        free(expected_child_dimensions);
+        return 0;
+    }
+
+    if (!parser_expect(parser, TOKEN_RIGHT_BRACE, "Syntax Error: Unterminated array initializer.")) {
+        for (size_t i = 0; i < count; ++i) {
+            value_free(&values[i]);
+        }
+        free(values);
+        free(expected_child_dimensions);
+        return 0;
+    }
+
+    if (declared_dimensions[level] != 0 && child_count != (size_t)declared_dimensions[level]) {
+        fprintf(stderr, "Syntax Error: Expected %ld elements but found %zu.\n", declared_dimensions[level], child_count);
+        for (size_t i = 0; i < count; ++i) {
+            value_free(&values[i]);
+        }
+        free(values);
+        free(expected_child_dimensions);
+        return 0;
+    }
+
+    out_dimensions[level] = (long)child_count;
+    *out_values = values;
+    *out_count = count;
+    free(expected_child_dimensions);
+    return 1;
+}
+
+static int parse_dynamic_multi_dimensional_initializer(Parser *parser,
+                                                      size_t dimension_count,
+                                                      const long *declared_dimensions,
+                                                      long *out_dimensions,
+                                                      ValueType *element_type,
+                                                      Value **out_values,
+                                                      size_t *out_count)
+{
+    long *child_dimensions = NULL;
+    Value *values = NULL;
+    size_t count = 0;
+    size_t block_count = 0;
+    long *expected_child_dimensions = NULL;
+    size_t child_dim_count = dimension_count - 1;
+    int use_outer_wrapper = 0;
+
+    Token *first = parser_peek(parser);
+    Token *second = parser_peek_next(parser);
+    if (first == NULL || first->type != TOKEN_LEFT_BRACE) {
+        fprintf(stderr, "Syntax Error: Expected '{' in array initializer.\n");
+        return 0;
+    }
+
+    if (dimension_count > 1 && second != NULL && second->type == TOKEN_LEFT_BRACE) {
+        use_outer_wrapper = 1;
+        parser_advance(parser);
+    }
+
+    child_dimensions = (long *)malloc(dimension_count * sizeof(long));
+    if (child_dimensions == NULL) {
+        fprintf(stderr, "Error: out of memory while parsing array initializer\n");
+        return 0;
+    }
+
+    while (1) {
+        Token *token = parser_peek(parser);
+        if (token == NULL) {
+            fprintf(stderr, "Syntax Error: Unterminated array initializer.\n");
+            for (size_t i = 0; i < count; ++i) {
+                value_free(&values[i]);
+            }
+            free(values);
+            free(expected_child_dimensions);
+            return 0;
+        }
+
+        if (use_outer_wrapper && token->type == TOKEN_RIGHT_BRACE) {
+            break;
+        }
+
+        if (token->type != TOKEN_LEFT_BRACE) {
+            if (block_count == 0) {
+                fprintf(stderr, "Syntax Error: Expected '{' in array initializer.\n");
+            } else {
+                fprintf(stderr, "Syntax Error: Expected additional array block or closing brace.\n");
+            }
+            for (size_t i = 0; i < count; ++i) {
+                value_free(&values[i]);
+            }
+            free(values);
+            free(expected_child_dimensions);
+            return 0;
+        }
+
+        child_dimensions = (long *)malloc(child_dim_count * sizeof(long));
+        if (child_dimensions == NULL) {
+            fprintf(stderr, "Error: out of memory while parsing array initializer\n");
+            for (size_t i = 0; i < count; ++i) {
+                value_free(&values[i]);
+            }
+            free(values);
+            free(expected_child_dimensions);
+            return 0;
+        }
+
+        Value *child_values = NULL;
+        size_t child_value_count = 0;
+        if (!parse_dynamic_initializer_level(parser, 1, dimension_count, declared_dimensions, child_dimensions, element_type, &child_values, &child_value_count)) {
+            free(child_dimensions);
+            for (size_t i = 0; i < count; ++i) {
+                value_free(&values[i]);
+            }
+            free(values);
+            free(expected_child_dimensions);
+            return 0;
+        }
+
+        if (block_count == 0) {
+            expected_child_dimensions = (long *)malloc(child_dim_count * sizeof(long));
+            if (expected_child_dimensions == NULL) {
+                fprintf(stderr, "Error: out of memory while parsing array initializer\n");
+                for (size_t i = 0; i < child_value_count; ++i) {
+                    value_free(&child_values[i]);
+                }
+                free(child_values);
+                free(child_dimensions);
+                for (size_t i = 0; i < count; ++i) {
+                    value_free(&values[i]);
+                }
+                free(values);
+                return 0;
+            }
+            memcpy(expected_child_dimensions, child_dimensions + 1, child_dim_count * sizeof(long));
+            memcpy(&out_dimensions[1], child_dimensions + 1, child_dim_count * sizeof(long));
+        } else if (!compare_dimensions(expected_child_dimensions, child_dimensions + 1, child_dim_count)) {
+            fprintf(stderr, "Syntax Error: Inconsistent nested array dimensions.\n");
+            for (size_t i = 0; i < child_value_count; ++i) {
+                value_free(&child_values[i]);
+            }
+            free(child_values);
+            free(child_dimensions);
+            free(expected_child_dimensions);
+            for (size_t i = 0; i < count; ++i) {
+                value_free(&values[i]);
+            }
+            free(values);
+            return 0;
+        }
+
+        Value *new_values = (Value *)realloc(values, (count + child_value_count) * sizeof(Value));
+        if (new_values == NULL) {
+            fprintf(stderr, "Error: out of memory while parsing array initializer\n");
+            for (size_t i = 0; i < child_value_count; ++i) {
+                value_free(&child_values[i]);
+            }
+            free(child_values);
+            free(child_dimensions);
+            free(expected_child_dimensions);
+            for (size_t i = 0; i < count; ++i) {
+                value_free(&values[i]);
+            }
+            free(values);
+            return 0;
+        }
+
+        values = new_values;
+        for (size_t i = 0; i < child_value_count; ++i) {
+            values[count + i] = child_values[i];
+        }
+        count += child_value_count;
+        block_count++;
+        free(child_values);
+        free(child_dimensions);
+
+        token = parser_peek(parser);
+        if (token != NULL && token->type == TOKEN_COMMA) {
+            parser_advance(parser);
+            continue;
+        }
+
+        if (!use_outer_wrapper && token != NULL && token->type == TOKEN_LEFT_BRACE) {
+            continue;
+        }
+
+        if (use_outer_wrapper && token != NULL && token->type == TOKEN_RIGHT_BRACE) {
+            continue;
+        }
+
+        break;
+    }
+
+    if (use_outer_wrapper) {
+        if (!parser_expect(parser, TOKEN_RIGHT_BRACE, "Syntax Error: Unterminated array initializer.")) {
+            for (size_t i = 0; i < count; ++i) {
+                value_free(&values[i]);
+            }
+            free(values);
+            free(expected_child_dimensions);
+            return 0;
+        }
+    }
+
+    if (declared_dimensions[0] != 0 && block_count != (size_t)declared_dimensions[0]) {
+        fprintf(stderr, "Syntax Error: Expected %ld elements but found %zu.\n", declared_dimensions[0], block_count);
+        for (size_t i = 0; i < count; ++i) {
+            value_free(&values[i]);
+        }
+        free(values);
+        free(expected_child_dimensions);
+        return 0;
+    }
+
+    out_dimensions[0] = (long)block_count;
+    *out_values = values;
+    *out_count = count;
+    free(expected_child_dimensions);
     return 1;
 }
 
@@ -483,19 +904,19 @@ Value parse_array_declaration(Parser *parser, int *error)
         return result;
     }
 
-    if (dynamic_declaration) {
-        ArrayValue *array = array_value_create_empty();
-        free(dimensions);
-        result = value_create_array(array);
-        *error = 0;
-        return result;
-    }
-
     if (!array_declaration_has_initializer(parser) && dimension_count == 0) {
         fprintf(stderr, "Syntax Error: Expected '=' or array dimensions in variable declaration.\n");
         free(dimensions);
         *error = 1;
         return result;
+    }
+
+    int has_dynamic_dimension = 0;
+    for (size_t i = 0; i < dimension_count; ++i) {
+        if (dimensions[i] == 0) {
+            has_dynamic_dimension = 1;
+            break;
+        }
     }
 
     if (array_declaration_has_initializer(parser)) {
@@ -505,17 +926,14 @@ Value parse_array_declaration(Parser *parser, int *error)
             Value *values = NULL;
             size_t value_count = 0;
             ValueType element_type = VALUE_NULL;
-            if (!parse_dynamic_initializer_values(parser, &element_type, &values, &value_count)) {
+            if (!parser_expect(parser, TOKEN_LEFT_BRACE, "Syntax Error: Expected '{' in array initializer.")) {
                 free(dimensions);
                 *error = 1;
                 return result;
             }
-
-            if (value_count == 0) {
-                ArrayValue *array = array_value_create_empty();
-                result = value_create_array(array);
-                *error = 0;
+            if (!parse_dynamic_initializer_values(parser, &element_type, &values, &value_count)) {
                 free(dimensions);
+                *error = 1;
                 return result;
             }
 
@@ -532,12 +950,50 @@ Value parse_array_declaration(Parser *parser, int *error)
             dynamic_dimensions[0] = (long)value_count;
 
             ArrayValue *array = array_value_create_from_values(1, dynamic_dimensions, element_type, values, value_count);
+            array->is_dynamic = 1;
             for (size_t j = 0; j < value_count; ++j) {
                 value_free(&values[j]);
             }
             free(values);
             free(dynamic_dimensions);
             free(dimensions);
+            result = value_create_array(array);
+            *error = 0;
+            return result;
+        }
+
+        if (has_dynamic_dimension) {
+            long *actual_dimensions = (long *)malloc(dimension_count * sizeof(long));
+            if (actual_dimensions == NULL) {
+                free(dimensions);
+                *error = 1;
+                return result;
+            }
+
+            Value *values = NULL;
+            size_t value_count = 0;
+            ValueType element_type = VALUE_NULL;
+            if (!parser_expect(parser, TOKEN_LEFT_BRACE, "Syntax Error: Expected '{' in array initializer.")) {
+                free(dimensions);
+                free(actual_dimensions);
+                *error = 1;
+                return result;
+            }
+            if (!parse_dynamic_initializer_level(parser, 0, dimension_count, dimensions, actual_dimensions, &element_type, &values, &value_count)) {
+                free(dimensions);
+                free(actual_dimensions);
+                *error = 1;
+                return result;
+            }
+
+            ArrayValue *array = array_value_create_from_values(dimension_count, actual_dimensions, element_type, values, value_count);
+            array->is_dynamic = 1;
+            for (size_t j = 0; j < value_count; ++j) {
+                value_free(&values[j]);
+            }
+            free(values);
+            free(dimensions);
+            free(actual_dimensions);
             result = value_create_array(array);
             *error = 0;
             return result;
@@ -592,6 +1048,15 @@ Value parse_array_declaration(Parser *parser, int *error)
             value_free(&values[j]);
         }
         free(values);
+        free(dimensions);
+        result = value_create_array(array);
+        *error = 0;
+        return result;
+    }
+
+    if (dynamic_declaration) {
+        ArrayValue *array = array_value_create_fixed(dimension_count, dimensions, VALUE_NULL);
+        array->is_dynamic = 1;
         free(dimensions);
         result = value_create_array(array);
         *error = 0;

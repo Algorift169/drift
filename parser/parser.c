@@ -23,6 +23,11 @@ static Token *parser_advance(Parser *parser)
     return &parser->tokens[parser->index++];
 }
 
+static int is_statement_terminator(Token *token)
+{
+    return token != NULL && (token->type == TOKEN_NEWLINE || token->type == TOKEN_SEMICOLON);
+}
+
 static int is_identifier_valid(const char *name)
 {
     size_t i;
@@ -337,11 +342,11 @@ Statement parser_parse(Parser *parser)
         }
 
         token = parser_peek(parser);
-        if (token != NULL && token->type == TOKEN_NEWLINE) {
+        if (token != NULL && is_statement_terminator(token)) {
             parser_advance(parser);
         }
 
-        if (parser_peek(parser) != NULL && parser_peek(parser)->type != TOKEN_EOF) {
+        if (parser_peek(parser) != NULL && parser_peek(parser)->type != TOKEN_EOF && !is_statement_terminator(parser_peek(parser))) {
             fprintf(stderr, "Syntax Error: unexpected extra tokens.\n");
             free(template);
             statement.type = STATEMENT_PRINT;
@@ -609,11 +614,11 @@ Statement parser_parse(Parser *parser)
         }
 
         token = parser_peek(parser);
-        if (token != NULL && token->type == TOKEN_NEWLINE) {
+        if (token != NULL && is_statement_terminator(token)) {
             parser_advance(parser);
         }
 
-        if (parser_peek(parser) != NULL && parser_peek(parser)->type != TOKEN_EOF) {
+        if (parser_peek(parser) != NULL && parser_peek(parser)->type != TOKEN_EOF && !is_statement_terminator(parser_peek(parser))) {
             fprintf(stderr, "Syntax Error: unexpected extra tokens.\n");
             free(variable_declaration.name);
             value_free(&variable_declaration.value);
