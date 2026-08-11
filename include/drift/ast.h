@@ -7,6 +7,7 @@
 typedef struct {
     char *name;
     Value value;
+    int is_declaration;
     int is_assignment;
     int is_array_expression;
     int is_array_declared;

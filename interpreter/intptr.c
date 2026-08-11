@@ -1,4 +1,3 @@
-#include <ctype.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -6,6 +5,8 @@
 #include "drift/array.h"
 #include "drift/array_value.h"
 #include "drift/interpreter.h"
+#include "drift/lexer.h"
+#include "drift/parser.h"
 
 typedef struct {
     char *data;
@@ -95,84 +96,25 @@ static int format_array_element_to_string(const ArrayValue *array, const long *i
 
 static int parse_array_template_expression(const char *expr, ArrayAccess *access)
 {
-    const char *cursor;
-
     if (expr == NULL || access == NULL) {
         return 0;
     }
 
     array_access_init(access);
-    cursor = expr;
-
-    if (!isalpha((unsigned char)*cursor) && *cursor != '_') {
+    Lexer lexer = lexer_create(expr);
+    size_t token_count = 0;
+    Token *tokens = lexer_scan_all(&lexer, &token_count);
+    if (tokens == NULL) {
         return 0;
     }
 
-    while (*cursor != '\0' && (isalnum((unsigned char)*cursor) || *cursor == '_')) {
-        cursor++;
-    }
+    Parser parser = parser_create(tokens, token_count);
+    int parsed = parse_array_access(&parser, access);
+    int is_access = access->is_whole_array || access->is_selection || access->index_count > 0;
+    int consumed_all = parser.index < parser.count && parser.tokens[parser.index].type == TOKEN_EOF;
+    token_free_array(tokens, token_count);
 
-    if (cursor == expr) {
-        return 0;
-    }
-
-    access->name = (char *)malloc((cursor - expr) + 1);
-    if (access->name == NULL) {
-        return 0;
-    }
-    memcpy(access->name, expr, cursor - expr);
-    access->name[cursor - expr] = '\0';
-
-    int found_bracket = 0;
-    while (*cursor == '[') {
-        found_bracket = 1;
-        cursor++;
-
-        if (*cursor == ']') {
-            access->is_whole_array = 1;
-            cursor++;
-            continue;
-        }
-
-        if (!(*cursor == '+' || *cursor == '-' || isdigit((unsigned char)*cursor))) {
-            array_access_free(access);
-            return 0;
-        }
-
-        char *end = NULL;
-        long index = strtol(cursor, &end, 10);
-        if (end == cursor) {
-            array_access_free(access);
-            return 0;
-        }
-
-        cursor = end;
-        while (*cursor != '\0' && isspace((unsigned char)*cursor)) {
-            cursor++;
-        }
-
-        if (*cursor != ']') {
-            array_access_free(access);
-            return 0;
-        }
-
-        cursor++;
-
-        long *new_indices = (long *)realloc(access->indices, (access->index_count + 1) * sizeof(long));
-        if (new_indices == NULL) {
-            array_access_free(access);
-            return 0;
-        }
-        access->indices = new_indices;
-        access->indices[access->index_count++] = index;
-    }
-
-    if (!found_bracket) {
-        array_access_free(access);
-        return 0;
-    }
-
-    if (*cursor != '\0') {
+    if (!parsed || !is_access || !consumed_all) {
         array_access_free(access);
         return 0;
     }
@@ -391,7 +333,29 @@ static char *interpolate_template(const char *template, Environment *environment
 
                 int success;
                 if (array_access.is_whole_array) {
-                    success = format_array_value_to_string(array_value.array_value, &sb);
+                    if (array_access.whole_array_dimension_count != array_value.array_value->dimension_count) {
+                        fprintf(stderr, "Runtime Error: Array rank is %zu; use %zu empty array access selector%s.\n",
+                                array_value.array_value->dimension_count, array_value.array_value->dimension_count,
+                                array_value.array_value->dimension_count == 1 ? "" : "s");
+                        success = 0;
+                    } else {
+                        success = format_array_value_to_string(array_value.array_value, &sb);
+                    }
+                } else if (array_access.is_selection) {
+                    success = array_access.selection_tuple_size == array_value.array_value->dimension_count;
+                    if (!success) {
+                        fprintf(stderr, "Runtime Error: Coordinate length %zu does not match array rank %zu.\n",
+                                array_access.selection_tuple_size, array_value.array_value->dimension_count);
+                    }
+                    for (size_t i = 0; success && i < array_access.selection_count; ++i) {
+                        if (i > 0 && !sb_append_char(&sb, ' ')) {
+                            success = 0;
+                            break;
+                        }
+                        success = format_array_element_to_string(array_value.array_value,
+                                                                 array_access.selection_indices + i * array_access.selection_tuple_size,
+                                                                 array_access.selection_tuple_size, &sb);
+                    }
                 } else {
                     success = format_array_element_to_string(array_value.array_value, array_access.indices, array_access.index_count, &sb);
                 }
@@ -523,6 +487,13 @@ int interpreter_execute(Statement statement, Environment *environment)
             }
 
             if (print_statement->array_access.is_whole_array) {
+                if (print_statement->array_access.whole_array_dimension_count != value.array_value->dimension_count) {
+                    fprintf(stderr, "Runtime Error: Array rank is %zu; use %zu empty array access selector%s.\n",
+                            value.array_value->dimension_count, value.array_value->dimension_count,
+                            value.array_value->dimension_count == 1 ? "" : "s");
+                    value_free(&value);
+                    return 1;
+                }
                 print_array_value(value.array_value);
             } else if (print_statement->array_access.is_selection) {
                 print_array_selection(value.array_value, &print_statement->array_access);
@@ -566,6 +537,11 @@ int interpreter_execute(Statement statement, Environment *environment)
 
         if (declaration->name == NULL) {
             fprintf(stderr, "Syntax Error: Expected variable identifier after 'var'.\n");
+            return 1;
+        }
+
+        if (declaration->is_declaration && environment_exists(environment, declaration->name)) {
+            fprintf(stderr, "Runtime Error: Variable '%s' is already declared.\n", declaration->name);
             return 1;
         }
 

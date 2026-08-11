@@ -173,6 +173,7 @@ Statement parser_parse(Parser *parser)
 
     variable_declaration.name = NULL;
     variable_declaration.value = value_create_string(NULL);
+    variable_declaration.is_declaration = 0;
     variable_declaration.is_assignment = 0;
     variable_declaration.is_array_expression = 0;
     variable_declaration.is_array_declared = 0;
@@ -462,6 +463,7 @@ Statement parser_parse(Parser *parser)
 
     if (token->type == TOKEN_VAR) {
         parser_advance(parser);
+        variable_declaration.is_declaration = 1;
 
         token = parser_peek(parser);
         if (token == NULL || token->type != TOKEN_IDENTIFIER) {

@@ -10,6 +10,7 @@ struct Parser;
 typedef struct {
     char *name;
     int is_whole_array;
+    size_t whole_array_dimension_count;
     int is_selection;
     size_t index_count;
     long *indices;

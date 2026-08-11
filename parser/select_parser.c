@@ -194,7 +194,19 @@ int parse_select_access(Parser *parser, ArrayAccess *access)
     long *indices = NULL;
     int *breaks = NULL;
 
-    while (1) {
+    Token *first_argument = parser_peek(parser);
+    if (first_argument != NULL && first_argument->type == TOKEN_INTEGER) {
+        if (!parse_integer_tuple(parser, &indices, &tuple_size)) {
+            return 0;
+        }
+        tuple_count = 1;
+        breaks = (int *)calloc(1, sizeof(int));
+        if (breaks == NULL) {
+            fprintf(stderr, "Error: out of memory while reading select() values\n");
+            free(indices);
+            return 0;
+        }
+    } else while (1) {
         Token *token = parser_peek(parser);
         if (token == NULL) {
             fprintf(stderr, "Syntax Error: Unterminated select() arguments.\n");
