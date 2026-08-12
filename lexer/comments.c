@@ -63,56 +63,30 @@ int lexer_skip_comments(Lexer *lexer)
         return 0;
     }
 
+    // Handle case where we're already inside a block comment
     if (lexer->in_block_comment) {
-        if (lexer->source[lexer->index] == '\n') {
-            lexer->in_block_comment_code = 0;
-            return 0;
-        }
-
-        if (lexer->source[lexer->index] == '*' &&
-            lexer->index + 1 < lexer->length &&
-            lexer->source[lexer->index + 1] == '/') {
-            lexer->in_block_comment = 0;
-            lexer->in_block_comment_code = 0;
-            lexer->index += 2;
-            return 1;
-        }
-
-        if (lexer->in_block_comment_code) {
-            return 0;
-        }
-
-        if (lexer->source[lexer->index] == '*') {
-            lexer->in_block_comment_code = 1;
-            lexer->index++;
-            while (lexer->index < lexer->length &&
-                   (lexer->source[lexer->index] == ' ' || lexer->source[lexer->index] == '\t')) {
-                lexer->index++;
-            }
-            return 1;
-        }
-
-        size_t start_index = lexer->index;
+        // Skip all characters until we find */
         while (lexer->index < lexer->length) {
-            if (lexer->source[lexer->index] == '\n') {
-                break;
-            }
             if (lexer->source[lexer->index] == '*' &&
                 lexer->index + 1 < lexer->length &&
                 lexer->source[lexer->index + 1] == '/') {
-                break;
-            }
-            if (lexer->source[lexer->index] == '*') {
-                break;
+                // Found end of block comment
+                lexer->in_block_comment = 0;
+                lexer->in_block_comment_code = 0;
+                lexer->index += 2;
+                return 1;
             }
             lexer->index++;
         }
-        return lexer->index > start_index ? 1 : 0;
+        // Reached EOF while in block comment (unterminated comment)
+        return 1;
     }
 
+    // Check if starting a new comment
     if (lexer->source[lexer->index] == '/' && lexer->index + 1 < lexer->length) {
         char next = lexer->source[lexer->index + 1];
 
+        // Single-line comment
         if (next == '/') {
             lexer->index += 2;
             while (lexer->index < lexer->length && lexer->source[lexer->index] != '\n') {
@@ -121,20 +95,26 @@ int lexer_skip_comments(Lexer *lexer)
             return 1;
         }
 
+        // Block comment
         if (next == '*') {
             lexer->in_block_comment = 1;
             lexer->in_block_comment_code = 0;
             lexer->index += 2;
-
-            if (lexer->source[lexer->index] == '*' &&
-                !(lexer->index + 1 < lexer->length && lexer->source[lexer->index + 1] == '/')) {
-                lexer->in_block_comment_code = 1;
-                lexer->index++;
-                while (lexer->index < lexer->length &&
-                       (lexer->source[lexer->index] == ' ' || lexer->source[lexer->index] == '\t')) {
-                    lexer->index++;
+            
+            // Skip all characters until we find */
+            while (lexer->index < lexer->length) {
+                if (lexer->source[lexer->index] == '*' &&
+                    lexer->index + 1 < lexer->length &&
+                    lexer->source[lexer->index + 1] == '/') {
+                    // Found end of block comment
+                    lexer->in_block_comment = 0;
+                    lexer->in_block_comment_code = 0;
+                    lexer->index += 2;
+                    return 1;
                 }
+                lexer->index++;
             }
+            // Reached EOF while in block comment (unterminated comment)
             return 1;
         }
     }
