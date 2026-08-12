@@ -150,11 +150,29 @@ static int execute_source(const char *source, Environment *environment)
     return result;
 }
 
+static int has_df_extension(const char *path)
+{
+    const char *dot;
+
+    if (path == NULL) {
+        return 0;
+    }
+
+    dot = strrchr(path, '.');
+    return dot != NULL && strcmp(dot, ".df") == 0;
+}
+
 static int execute_file(const char *path)
 {
     char *source;
     Environment environment = environment_create();
     int result = 0;
+
+    if (!has_df_extension(path)) {
+        fprintf(stderr, "Error: only .df files can be executed. '%s' is not a valid Drift file.\n", path);
+        environment_free(&environment);
+        return 1;
+    }
 
     source = read_file_to_string(path);
     if (source == NULL) {

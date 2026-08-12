@@ -1,0 +1,11 @@
+/*
+We are testing the documentation system of drift...
+here All these will be considered as documentations or comments and executable codes will be inside exe...
+@exc
+say "We are printing an array: \n"
+var arr[][] = {1,2,3,4,5}{75,3,87,8,2}
+say arr[][]
+.exc
+
+this .exe line confirms the end of executable code inside this multi-line comment section.
+*/
