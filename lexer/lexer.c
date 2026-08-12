@@ -3,6 +3,7 @@
 #include <stdlib.h>
 #include <string.h>
 
+#include "drift/comments.h"
 #include "drift/lexer.h"
 
 static int is_space(char c)
@@ -39,6 +40,8 @@ Lexer lexer_create(const char *source)
     lexer.source = source;
     lexer.index = 0;
     lexer.length = 0;
+    lexer.in_block_comment = 0;
+    lexer.in_block_comment_code = 0;
 
     if (source != NULL) {
         while (source[lexer.length] != '\0') {
@@ -274,6 +277,15 @@ Token *lexer_scan_all(Lexer *lexer, size_t *token_count)
     while (lexer->index < lexer->length) {
         skip_whitespace(lexer);
 
+        int comment_res = lexer_skip_comments(lexer);
+        if (comment_res < 0) {
+            token_free_array(tokens, count);
+            return NULL;
+        }
+        if (comment_res > 0) {
+            continue;
+        }
+
         if (lexer->index >= lexer->length) {
             break;
         }
@@ -371,6 +383,12 @@ Token *lexer_scan_all(Lexer *lexer, size_t *token_count)
             }
             tokens = new_tokens;
         }
+    }
+
+    if (lexer->in_block_comment) {
+        fprintf(stderr, "Syntax Error: Unterminated block comment.\n");
+        token_free_array(tokens, count);
+        return NULL;
     }
 
     tokens[count++] = make_token(TOKEN_EOF, NULL);

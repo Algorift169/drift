@@ -1,0 +1,8 @@
+/**say "x"*/
+
+/*
+ * say "hello from block comment"
+   this line is ignored as a comment
+ * var val = 42
+ * say val
+ */

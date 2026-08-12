@@ -1,0 +1,17 @@
+// This is a single line comment at the top
+var a = 10, b = 20 // comment at end of line
+
+/* This is a single-line block comment */
+var c = 'hello'
+
+/*
+ * Multi-line block comment
+ * var x = 999 (ignored code inside comment)
+ */
+say a
+say b /* inline block comment */
+say c
+
+// Another single line comment
+var x[] = {10, 20} /* array comment */
+say x[0]

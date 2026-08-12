@@ -319,7 +319,12 @@ Statement parser_parse(Parser *parser)
     variable_declaration.count = 0;
 
     token = parser_peek(parser);
-    if (token == NULL) {
+    while (token != NULL && token->type == TOKEN_NEWLINE) {
+        parser_advance(parser);
+        token = parser_peek(parser);
+    }
+
+    if (token == NULL || token->type == TOKEN_EOF) {
         statement.type = STATEMENT_PRINT;
         print_statement.value = NULL;
         print_statement.is_variable_reference = 0;
@@ -359,6 +364,7 @@ Statement parser_parse(Parser *parser)
                     print_statement.value = NULL;
                     print_statement.is_variable_reference = 0;
                     print_statement.has_array_access = 0;
+                    array_access_init(&print_statement.array_access);
                     statement.as.print_statement = print_statement;
                     return statement;
                 }
@@ -382,9 +388,10 @@ Statement parser_parse(Parser *parser)
             token = parser_peek(parser);
             if (token != NULL && is_statement_terminator(token)) {
                 parser_advance(parser);
+                return statement;
             }
 
-            if (parser_peek(parser) != NULL && parser_peek(parser)->type != TOKEN_EOF && !is_statement_terminator(parser_peek(parser))) {
+            if (parser_peek(parser) != NULL && parser_peek(parser)->type != TOKEN_EOF) {
                 fprintf(stderr, "Syntax Error: unexpected extra tokens.\n");
                 free(print_statement.value);
                 print_statement.value = NULL;
@@ -421,9 +428,10 @@ Statement parser_parse(Parser *parser)
             token = parser_peek(parser);
             if (token != NULL && is_statement_terminator(token)) {
                 parser_advance(parser);
+                return statement;
             }
 
-            if (parser_peek(parser) != NULL && parser_peek(parser)->type != TOKEN_EOF && !is_statement_terminator(parser_peek(parser))) {
+            if (parser_peek(parser) != NULL && parser_peek(parser)->type != TOKEN_EOF) {
                 fprintf(stderr, "Syntax Error: unexpected extra tokens.\n");
                 free(print_statement.value);
                 print_statement.value = NULL;
@@ -512,9 +520,12 @@ Statement parser_parse(Parser *parser)
         token = parser_peek(parser);
         if (token != NULL && is_statement_terminator(token)) {
             parser_advance(parser);
+            statement.type = STATEMENT_VARIABLE_DECLARATION;
+            statement.as.variable_declaration = variable_declaration;
+            return statement;
         }
 
-        if (parser_peek(parser) != NULL && parser_peek(parser)->type != TOKEN_EOF && !is_statement_terminator(parser_peek(parser))) {
+        if (parser_peek(parser) != NULL && parser_peek(parser)->type != TOKEN_EOF) {
             fprintf(stderr, "Syntax Error: unexpected extra tokens.\n");
             variable_declaration_free(&variable_declaration);
             statement.type = STATEMENT_VARIABLE_DECLARATION;
@@ -573,9 +584,12 @@ Statement parser_parse(Parser *parser)
         token = parser_peek(parser);
         if (token != NULL && is_statement_terminator(token)) {
             parser_advance(parser);
+            statement.type = STATEMENT_VARIABLE_DECLARATION;
+            statement.as.variable_declaration = variable_declaration;
+            return statement;
         }
 
-        if (parser_peek(parser) != NULL && parser_peek(parser)->type != TOKEN_EOF && !is_statement_terminator(parser_peek(parser))) {
+        if (parser_peek(parser) != NULL && parser_peek(parser)->type != TOKEN_EOF) {
             fprintf(stderr, "Syntax Error: unexpected extra tokens.\n");
             variable_declaration_free(&variable_declaration);
             statement.type = STATEMENT_VARIABLE_DECLARATION;
@@ -593,6 +607,9 @@ Statement parser_parse(Parser *parser)
         fprintf(stderr, "Syntax Error: Only literal values are allowed during variable declaration in Drift v0.2.\n");
         statement.type = STATEMENT_PRINT;
         print_statement.value = NULL;
+        print_statement.is_variable_reference = 0;
+        print_statement.has_array_access = 0;
+        array_access_init(&print_statement.array_access);
         statement.as.print_statement = print_statement;
         return statement;
     }
@@ -600,6 +617,9 @@ Statement parser_parse(Parser *parser)
     fprintf(stderr, "Syntax Error: expected 'say' or 'var'.\n");
     statement.type = STATEMENT_PRINT;
     print_statement.value = NULL;
+    print_statement.is_variable_reference = 0;
+    print_statement.has_array_access = 0;
+    array_access_init(&print_statement.array_access);
     statement.as.print_statement = print_statement;
     return statement;
 }

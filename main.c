@@ -3,6 +3,7 @@
 #include <stdlib.h>
 #include <string.h>
 
+#include "drift/comments.h"
 #include "drift/lexer.h"
 #include "drift/parser.h"
 #include "drift/interpreter.h"
@@ -99,7 +100,7 @@ static int execute_source(const char *source, Environment *environment)
     size_t token_count = 0;
     Parser parser;
     Statement statement;
-    int result;
+    int result = 0;
 
     lexer = lexer_create(source);
     tokens = lexer_scan_all(&lexer, &token_count);
@@ -108,10 +109,24 @@ static int execute_source(const char *source, Environment *environment)
     }
 
     parser = parser_create(tokens, token_count);
-    statement = parser_parse(&parser);
-    result = interpreter_execute(statement, environment);
+    while (parser.index < parser.count) {
+        Token *tok = &parser.tokens[parser.index];
+        if (tok->type == TOKEN_EOF) {
+            break;
+        }
+        if (tok->type == TOKEN_NEWLINE) {
+            parser.index++;
+            continue;
+        }
 
-    statement_free(&statement);
+        statement = parser_parse(&parser);
+        result = interpreter_execute(statement, environment);
+        statement_free(&statement);
+        if (result != 0) {
+            break;
+        }
+    }
+
     token_free_array(tokens, token_count);
 
     return result;
@@ -120,8 +135,6 @@ static int execute_source(const char *source, Environment *environment)
 static int execute_file(const char *path)
 {
     char *source;
-    char *line_start;
-    char *newline_pos;
     Environment environment = environment_create();
     int result = 0;
 
@@ -131,29 +144,7 @@ static int execute_file(const char *path)
         return 1;
     }
 
-    line_start = source;
-    while (*line_start != '\0') {
-        newline_pos = strchr(line_start, '\n');
-        if (newline_pos != NULL) {
-            *newline_pos = '\0';
-        }
-
-        if (trim_whitespace(line_start)[0] != '\0') {
-            char *trimmed = trim_whitespace(line_start);
-            result = execute_source(trimmed, &environment);
-            if (result != 0) {
-                free(source);
-                environment_free(&environment);
-                return result;
-            }
-        }
-
-        if (newline_pos == NULL) {
-            break;
-        }
-
-        line_start = newline_pos + 1;
-    }
+    result = execute_source(source, &environment);
 
     free(source);
     environment_free(&environment);
@@ -162,33 +153,55 @@ static int execute_file(const char *path)
 
 static void run_repl(void)
 {
-    char buffer[4096];
+    char line_buffer[4096];
+    char *input_buffer = NULL;
+    size_t input_length = 0;
     Environment environment = environment_create();
 
     printf(">>> ");
-    while (fgets(buffer, sizeof(buffer), stdin) != NULL) {
-        char *trimmed;
-        int result;
+    fflush(stdout);
 
-        trimmed = trim_whitespace(buffer);
+    while (fgets(line_buffer, sizeof(line_buffer), stdin) != NULL) {
+        size_t line_len = strlen(line_buffer);
+        char *new_buf = (char *)realloc(input_buffer, input_length + line_len + 1);
+        if (new_buf == NULL) {
+            fprintf(stderr, "Error: out of memory in REPL\n");
+            free(input_buffer);
+            environment_free(&environment);
+            return;
+        }
+        input_buffer = new_buf;
+        if (input_length == 0) {
+            strcpy(input_buffer, line_buffer);
+        } else {
+            strcat(input_buffer, line_buffer);
+        }
+        input_length += line_len;
+
+        char *trimmed = trim_whitespace(input_buffer);
         if (strcmp(trimmed, "exit") == 0 || strcmp(trimmed, "quit") == 0) {
             break;
         }
 
-        if (trimmed[0] == '\0') {
-            printf(">>> ");
+        if (is_block_comment_open(input_buffer)) {
+            printf("... ");
+            fflush(stdout);
             continue;
         }
 
-        result = execute_source(trimmed, &environment);
-        if (result != 0) {
-            printf(">>> ");
-            continue;
+        if (trimmed[0] != '\0') {
+            execute_source(input_buffer, &environment);
         }
+
+        free(input_buffer);
+        input_buffer = NULL;
+        input_length = 0;
 
         printf(">>> ");
+        fflush(stdout);
     }
 
+    free(input_buffer);
     environment_free(&environment);
 }
 

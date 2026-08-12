@@ -9,6 +9,8 @@ typedef struct {
     const char *source;
     size_t index;
     size_t length;
+    int in_block_comment;
+    int in_block_comment_code;
 } Lexer;
 
 Lexer lexer_create(const char *source);
