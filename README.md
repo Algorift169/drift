@@ -9,9 +9,11 @@ Source code -> Lexer -> Tokens -> Parser -> AST -> Interpreter -> Output
 - `say` statements for output
 - variable declarations with `var`
 - string, integer, float, and boolean literals
-- simple REPL mode
+- **comments support** (`//` single-line and `/* */` multi-line)
+- simple REPL mode with multi-line comment continuation
 - file-based execution
 - interpolation support for values like `say "value: {name}"`
+- robust error handling that reports errors without crashing
 
 ## Build
 
@@ -43,7 +45,18 @@ Then enter commands such as:
 >>> say "Hello, Drift!"
 >>> var name = "Israfil"
 >>> say "Hello, {name}!"
+>>> // Comments work too!
+>>> var x = 10  /* inline comment */
 >>> exit
+```
+
+**Note:** If you open a block comment (`/*`), the REPL will show `...` as the prompt while waiting for you to close it:
+
+```text
+>>> var x = 10  /* open comment
+... var y = 20
+... */
+>>>
 ```
 
 ### File execution
@@ -55,11 +68,15 @@ Then enter commands such as:
 ## Example programs
 
 ```drift
+// Greeting program
 say "Hello, World!"
+
+/* User information section */
 var name = "Israfil"
 var age = 20
-say "Name: {name}"
-say "Age: {age}"
+
+say "Name: {name}"      // Print name
+say "Age: {age}"        /* Print age */
 ```
 
 ## Notes
@@ -87,5 +104,8 @@ say "Age: {age}"
 
 See the docs folder for language notes and milestones:
 
-- [docs/printing/p1.md](docs/printing/p1.md)
-- [docs/variables/v1.md](docs/variables/v1.md)
+- [docs/printing/p1.md](docs/printing/p1.md) - Print statements
+- [docs/variables/v1.md](docs/variables/v1.md) - Variable declarations
+- [docs/comment/c1.md](docs/comment/c1.md) - Comment syntax and features
+- [docs/comment/c2.md](docs/comment/c2.md) - Comment examples and best practices
+- [docs/comment/c3.md](docs/comment/c3.md) - Comment implementation details
