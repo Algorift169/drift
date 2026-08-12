@@ -260,3 +260,120 @@ const Value *array_value_get_element(const ArrayValue *array, const long *indice
     }
     return &array->elements[flat_index];
 }
+
+static int array_value_resize(ArrayValue *array, const long *new_dimensions)
+{
+    size_t new_total_count = 1;
+    for (size_t i = 0; i < array->dimension_count; ++i) {
+        if (new_dimensions[i] < 0) {
+            return 0;
+        }
+        new_total_count *= (size_t)new_dimensions[i];
+    }
+
+    Value *new_elements = (Value *)malloc(new_total_count * sizeof(Value));
+    if (new_elements == NULL && new_total_count > 0) {
+        return 0;
+    }
+
+    for (size_t i = 0; i < new_total_count; ++i) {
+        new_elements[i] = value_create_null();
+    }
+
+    if (array->total_count > 0 && array->elements != NULL) {
+        long *coords = (long *)malloc(array->dimension_count * sizeof(long));
+        if (coords == NULL) {
+            free(new_elements);
+            return 0;
+        }
+
+        for (size_t idx = 0; idx < array->total_count; ++idx) {
+            size_t temp = idx;
+            for (size_t i = array->dimension_count; i > 0; --i) {
+                size_t dim = i - 1;
+                coords[dim] = temp % array->dimensions[dim];
+                temp /= array->dimensions[dim];
+            }
+
+            size_t new_flat_index = 0;
+            size_t stride = 1;
+            for (size_t i = array->dimension_count; i > 0; --i) {
+                size_t dim = i - 1;
+                new_flat_index += (size_t)coords[dim] * stride;
+                stride *= (size_t)new_dimensions[dim];
+            }
+
+            new_elements[new_flat_index] = array->elements[idx];
+        }
+        free(coords);
+        free(array->elements);
+    }
+
+    array->elements = new_elements;
+    array->total_count = new_total_count;
+    array->length = new_total_count;
+
+    for (size_t i = 0; i < array->dimension_count; ++i) {
+        array->dimensions[i] = new_dimensions[i];
+    }
+
+    return 1;
+}
+
+int array_value_set_element(ArrayValue *array, const long *indices, size_t index_count, const Value *value)
+{
+    if (array == NULL || value == NULL || value->type == VALUE_ARRAY) {
+        return 0;
+    }
+
+    if (index_count != array->dimension_count) {
+        return 0;
+    }
+
+    int need_resize = 0;
+    for (size_t i = 0; i < array->dimension_count; ++i) {
+        if (indices[i] < 0) {
+            return 0;
+        }
+        if (indices[i] >= array->dimensions[i]) {
+            if (!array->is_dynamic) {
+                return 0;
+            }
+            need_resize = 1;
+        }
+    }
+
+    if (need_resize) {
+        long *new_dimensions = (long *)malloc(array->dimension_count * sizeof(long));
+        if (new_dimensions == NULL) {
+            return 0;
+        }
+        for (size_t i = 0; i < array->dimension_count; ++i) {
+            new_dimensions[i] = array->dimensions[i];
+            if (indices[i] >= array->dimensions[i]) {
+                new_dimensions[i] = indices[i] + 1;
+            }
+        }
+        if (!array_value_resize(array, new_dimensions)) {
+            free(new_dimensions);
+            return 0;
+        }
+        free(new_dimensions);
+    }
+
+    size_t flat_index = 0;
+    if (!array_value_get_flat_index(array, indices, index_count, &flat_index)) {
+        return 0;
+    }
+
+    if (array->element_type != VALUE_NULL && value->type != VALUE_NULL && value->type != array->element_type) {
+        return 0;
+    }
+
+    value_free(&array->elements[flat_index]);
+    array->elements[flat_index] = value_copy(value);
+    if (array->element_type == VALUE_NULL && value->type != VALUE_NULL) {
+        array->element_type = value->type;
+    }
+    return 1;
+}

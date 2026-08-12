@@ -1,0 +1,11 @@
+var i = 0, j = 1
+say i
+say j
+var a = 10, b = 20, c = 'hello'
+say a
+say b
+say c
+var x[] = {10, 20}, y = 5
+say x[0]
+say x[1]
+say y

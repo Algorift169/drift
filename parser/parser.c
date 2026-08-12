@@ -28,6 +28,28 @@ static int is_statement_terminator(Token *token)
     return token != NULL && (token->type == TOKEN_NEWLINE || token->type == TOKEN_SEMICOLON);
 }
 
+static int is_array_element_assignment(Parser *parser, size_t start)
+{
+    size_t index = start + 1U;
+    int has_index = 0;
+    while (index < parser->count && parser->tokens[index].type == TOKEN_LEFT_BRACKET) {
+        if (index + 2U >= parser->count ||
+            (parser->tokens[index + 1U].type != TOKEN_INTEGER && parser->tokens[index + 1U].type != TOKEN_IDENTIFIER) ||
+            parser->tokens[index + 2U].type != TOKEN_RIGHT_BRACKET) {
+            return 0;
+        }
+        has_index = 1;
+        index += 3U;
+    }
+    if (has_index && index < parser->count && parser->tokens[index].type == TOKEN_EQUAL) {
+        if (index + 1 < parser->count && parser->tokens[index + 1].type == TOKEN_LEFT_BRACE) {
+            return 0;
+        }
+        return 1;
+    }
+    return 0;
+}
+
 static int is_identifier_valid(const char *name)
 {
     size_t i;
@@ -66,15 +88,6 @@ static Value parse_literal_value(Token *token)
         char *end = NULL;
         long value = strtol(token->value, &end, 10);
         (void)end;
-
-        if (value == 1) {
-            return value_create_boolean(1);
-        }
-
-        if (value == 0) {
-            return value_create_boolean(0);
-        }
-
         return value_create_integer(value);
     }
 
@@ -130,136 +143,105 @@ Parser parser_create(Token *tokens, size_t count)
     return parser;
 }
 
-static void append_template_text(char **buffer, size_t *length, size_t *capacity, const char *text)
+static void variable_declaration_single_init(VariableDeclarationSingle *single)
 {
-    size_t text_length;
-
-    if (buffer == NULL || length == NULL || capacity == NULL || text == NULL) {
-        return;
-    }
-
-    text_length = strlen(text);
-    if (*length + text_length + 1 > *capacity) {
-        size_t new_capacity = *capacity;
-        while (*length + text_length + 1 > new_capacity) {
-            new_capacity *= 2;
-        }
-        *buffer = (char *)realloc(*buffer, new_capacity);
-        if (*buffer == NULL) {
-            fprintf(stderr, "Error: out of memory while building print template\n");
-            return;
-        }
-        *capacity = new_capacity;
-    }
-
-    strcat(*buffer, text);
-    *length += text_length;
+    single->name = NULL;
+    single->value = value_create_string(NULL);
+    single->is_declaration = 0;
+    single->is_assignment = 0;
+    single->is_array_element_assignment = 0;
+    single->is_array_expression = 0;
+    single->is_array_declared = 0;
+    array_access_init(&single->array_access);
 }
 
-Statement parser_parse(Parser *parser)
+static void variable_declaration_single_free(VariableDeclarationSingle *single)
 {
-    Token *token;
-    Statement statement;
-    VariableDeclaration variable_declaration;
-    PrintStatement print_statement;
-    char *template = NULL;
-    size_t template_length = 0;
-    size_t template_capacity = 16;
+    if (single == NULL) {
+        return;
+    }
+    free(single->name);
+    single->name = NULL;
+    value_free(&single->value);
+    array_access_free(&single->array_access);
+}
 
-    print_statement.value = NULL;
-    print_statement.is_variable_reference = 0;
-    print_statement.has_array_access = 0;
-    array_access_init(&print_statement.array_access);
-
-    variable_declaration.name = NULL;
-    variable_declaration.value = value_create_string(NULL);
-    variable_declaration.is_declaration = 0;
-    variable_declaration.is_assignment = 0;
-    variable_declaration.is_array_expression = 0;
-    variable_declaration.is_array_declared = 0;
-    array_access_init(&variable_declaration.array_access);
-
-    token = parser_peek(parser);
-    if (token == NULL) {
-        fprintf(stderr, "Syntax Error: Unexpected end of input.\n");
-        statement.type = STATEMENT_PRINT;
-        print_statement.value = NULL;
-        print_statement.is_variable_reference = 0;
-        statement.as.print_statement = print_statement;
-        return statement;
+static int parse_single_declaration(Parser *parser, VariableDeclarationSingle *single, int is_declaration)
+{
+    Token *token = parser_peek(parser);
+    if (token == NULL || token->type != TOKEN_IDENTIFIER) {
+        if (is_declaration) {
+            fprintf(stderr, "Syntax Error: Expected variable identifier after 'var'.\n");
+        } else {
+            fprintf(stderr, "Syntax Error: Expected variable identifier.\n");
+        }
+        return 0;
     }
 
-    if (token->type == TOKEN_SAY) {
-        parser_advance(parser);
-        template = (char *)malloc(template_capacity);
-        if (template == NULL) {
-            fprintf(stderr, "Error: out of memory while building print template\n");
-            statement.type = STATEMENT_PRINT;
-            print_statement.value = NULL;
-            print_statement.is_variable_reference = 0;
-            print_statement.has_array_access = 0;
-            statement.as.print_statement = print_statement;
-            return statement;
+    if (!is_identifier_valid(token->value)) {
+        fprintf(stderr, "Syntax Error: Invalid identifier '%s'.\n", token->value);
+        return 0;
+    }
+
+    single->name = drift_duplicate_string(token->value);
+    parser_advance(parser);
+
+    single->is_declaration = is_declaration;
+    single->is_assignment = 0;
+    single->is_array_element_assignment = 0;
+    single->is_array_expression = 0;
+    single->is_array_declared = 0;
+    array_access_init(&single->array_access);
+    single->value = value_create_string(NULL);
+
+    token = parser_peek(parser);
+    if (token == NULL || is_statement_terminator(token) || token->type == TOKEN_COMMA) {
+        fprintf(stderr, "Syntax Error: Expected '=' or array dimensions after variable name.\n");
+        return 0;
+    }
+
+    if (is_array_element_assignment(parser, parser->index - 1U)) {
+        single->is_declaration = 0;
+        single->is_assignment = 1;
+        single->is_array_element_assignment = 1;
+        parser->index--;
+        if (!parse_array_access(parser, &single->array_access) ||
+            parser_peek(parser) == NULL || parser_peek(parser)->type != TOKEN_EQUAL) {
+            fprintf(stderr, "Syntax Error: Expected '=' after array access.\n");
+            return 0;
         }
-        template[0] = '\0';
-        print_statement.has_array_access = 0;
-        array_access_init(&print_statement.array_access);
+        parser_advance(parser);
+        token = parser_peek(parser);
+        if (token == NULL || is_statement_terminator(token) || token->type == TOKEN_COMMA) {
+            fprintf(stderr, "Syntax Error: Expected literal value after '='.\n");
+            return 0;
+        }
+        single->value = parse_literal_value(token);
+        if (single->value.type == VALUE_STRING && single->value.string_value == NULL) {
+            fprintf(stderr, "Syntax Error: Expected literal value after '='.\n");
+            return 0;
+        }
+        parser_advance(parser);
+        return 1;
+    }
 
-        while (1) {
+    if (token->type == TOKEN_LEFT_BRACKET) {
+        int parse_error = 0;
+        single->is_array_declared = 1;
+        single->value = parse_array_declaration(parser, &parse_error);
+        if (parse_error) {
+            return 0;
+        }
+
+        token = parser_peek(parser);
+        if (token != NULL && token->type == TOKEN_EQUAL) {
+            parser_advance(parser);
+            single->is_assignment = 1;
+
             token = parser_peek(parser);
-            if (token == NULL || token->type == TOKEN_NEWLINE || token->type == TOKEN_EOF) {
-                break;
-            }
-
-            if (token->type == TOKEN_STRING) {
-                char *placeholder = NULL;
-                if (token->value != NULL && token->value[0] == '\'' && token->value[strlen(token->value) - 1] == '\'') {
-                    size_t inner_length = strlen(token->value) - 2U;
-                    char *inner = (char *)malloc(inner_length + 1U);
-                    if (inner == NULL) {
-                        fprintf(stderr, "Error: out of memory while reading single-quoted variable reference\n");
-                        free(template);
-                        array_access_free(&print_statement.array_access);
-                        statement.type = STATEMENT_PRINT;
-                        print_statement.value = NULL;
-                        print_statement.is_variable_reference = 0;
-                        statement.as.print_statement = print_statement;
-                        return statement;
-                    }
-                    memcpy(inner, token->value + 1, inner_length);
-                    inner[inner_length] = '\0';
-                    placeholder = (char *)malloc(inner_length + 3U);
-                    if (placeholder == NULL) {
-                        fprintf(stderr, "Error: out of memory while reading single-quoted variable reference\n");
-                        free(inner);
-                        free(template);
-                        array_access_free(&print_statement.array_access);
-                        statement.type = STATEMENT_PRINT;
-                        print_statement.value = NULL;
-                        print_statement.is_variable_reference = 0;
-                        statement.as.print_statement = print_statement;
-                        return statement;
-                    }
-                    snprintf(placeholder, inner_length + 3U, "{%s}", inner);
-                    free(inner);
-                } else {
-                    placeholder = (char *)malloc(strlen(token->value) + 1U);
-                    if (placeholder == NULL) {
-                        fprintf(stderr, "Error: out of memory while reading string\n");
-                        free(template);
-                        array_access_free(&print_statement.array_access);
-                        statement.type = STATEMENT_PRINT;
-                        print_statement.value = NULL;
-                        print_statement.is_variable_reference = 0;
-                        statement.as.print_statement = print_statement;
-                        return statement;
-                    }
-                    strcpy(placeholder, token->value);
-                }
-                append_template_text(&template, &template_length, &template_capacity, placeholder);
-                free(placeholder);
-                parser_advance(parser);
-                continue;
+            if (token == NULL || is_statement_terminator(token) || token->type == TOKEN_COMMA) {
+                fprintf(stderr, "Syntax Error: Expected value after '='.\n");
+                return 0;
             }
 
             if (token->type == TOKEN_IDENTIFIER) {
@@ -272,142 +254,93 @@ Statement parser_parse(Parser *parser)
                                            (next_token->type == TOKEN_DOT && parser->index + 2 < parser->count &&
                                             parser->tokens[parser->index + 2].type == TOKEN_IDENTIFIER &&
                                             strcmp(parser->tokens[parser->index + 2].value, "select") == 0))) {
-                    if (print_statement.has_array_access) {
-                        fprintf(stderr, "Syntax Error: multiple array accesses are not supported in one print statement.\n");
-                        free(template);
-                        array_access_free(&print_statement.array_access);
-                        statement.type = STATEMENT_PRINT;
-                        print_statement.value = NULL;
-                        print_statement.is_variable_reference = 0;
-                        statement.as.print_statement = print_statement;
-                        return statement;
+                    if (!parse_array_access(parser, &single->array_access)) {
+                        return 0;
                     }
-
-                    if (!parse_array_access(parser, &print_statement.array_access)) {
-                        free(template);
-                        array_access_free(&print_statement.array_access);
-                        statement.type = STATEMENT_PRINT;
-                        print_statement.value = NULL;
-                        print_statement.is_variable_reference = 0;
-                        statement.as.print_statement = print_statement;
-                        return statement;
-                    }
-                    print_statement.has_array_access = 1;
-                    continue;
+                    single->is_array_expression = single->is_array_declared;
+                    single->value = value_create_string(NULL);
+                } else {
+                    single->value = parse_literal_value(token);
+                    parser_advance(parser);
                 }
-
-                char *placeholder = NULL;
-                size_t placeholder_length = strlen(token->value) + 3;
-                placeholder = (char *)malloc(placeholder_length);
-                if (placeholder == NULL) {
-                    fprintf(stderr, "Error: out of memory while reading identifier\n");
-                    free(template);
-                    array_access_free(&print_statement.array_access);
-                    statement.type = STATEMENT_PRINT;
-                    print_statement.value = NULL;
-                    print_statement.is_variable_reference = 0;
-                    statement.as.print_statement = print_statement;
-                    return statement;
-                }
-                snprintf(placeholder, placeholder_length, "{%s}", token->value);
-                append_template_text(&template, &template_length, &template_capacity, placeholder);
-                free(placeholder);
+            } else {
+                single->value = parse_literal_value(token);
                 parser_advance(parser);
-                continue;
             }
-
-            fprintf(stderr, "Syntax Error: Expected string after 'say'\n");
-            free(template);
-            array_access_free(&print_statement.array_access);
-            statement.type = STATEMENT_PRINT;
-            print_statement.value = NULL;
-            print_statement.is_variable_reference = 0;
-            statement.as.print_statement = print_statement;
-            return statement;
         }
-
-        if (template[0] == '\0') {
-            if (!print_statement.has_array_access) {
-                fprintf(stderr, "Syntax Error: Expected string after 'say'\n");
-                free(template);
-                statement.type = STATEMENT_PRINT;
-                print_statement.value = NULL;
-                print_statement.is_variable_reference = 0;
-                print_statement.has_array_access = 0;
-                statement.as.print_statement = print_statement;
-                return statement;
-            }
-
-            free(template);
-            template = NULL;
-        }
+    } else if (token->type == TOKEN_EQUAL) {
+        parser_advance(parser);
+        single->is_assignment = 1;
 
         token = parser_peek(parser);
-        if (token != NULL && is_statement_terminator(token)) {
+        if (token == NULL || is_statement_terminator(token) || token->type == TOKEN_COMMA) {
+            fprintf(stderr, "Syntax Error: Expected value after '='.\n");
+            return 0;
+        }
+
+        if (token->type == TOKEN_IDENTIFIER) {
+            Token *next_token = NULL;
+            if (parser->index + 1 < parser->count) {
+                next_token = &parser->tokens[parser->index + 1];
+            }
+
+            if (next_token != NULL && (next_token->type == TOKEN_LEFT_BRACKET ||
+                                       (next_token->type == TOKEN_DOT && parser->index + 2 < parser->count &&
+                                        parser->tokens[parser->index + 2].type == TOKEN_IDENTIFIER &&
+                                        strcmp(parser->tokens[parser->index + 2].value, "select") == 0))) {
+                if (!parse_array_access(parser, &single->array_access)) {
+                    return 0;
+                }
+                single->is_array_expression = single->is_array_declared;
+                single->value = value_create_string(NULL);
+            } else {
+                single->value = parse_literal_value(token);
+                parser_advance(parser);
+            }
+        } else {
+            single->value = parse_literal_value(token);
             parser_advance(parser);
         }
+    } else {
+        fprintf(stderr, "Syntax Error: Expected '=' or array dimensions after variable name.\n");
+        return 0;
+    }
 
-        if (parser_peek(parser) != NULL && parser_peek(parser)->type != TOKEN_EOF && !is_statement_terminator(parser_peek(parser))) {
-            fprintf(stderr, "Syntax Error: unexpected extra tokens.\n");
-            free(template);
-            statement.type = STATEMENT_PRINT;
-            print_statement.value = NULL;
-            print_statement.is_variable_reference = 0;
-            statement.as.print_statement = print_statement;
-            return statement;
-        }
+    return 1;
+}
 
-        print_statement.value = template;
-        print_statement.is_variable_reference = 0;
+Statement parser_parse(Parser *parser)
+{
+    Token *token;
+    Statement statement;
+    PrintStatement print_statement;
+    VariableDeclaration variable_declaration;
+    variable_declaration.vars = NULL;
+    variable_declaration.count = 0;
+
+    token = parser_peek(parser);
+    if (token == NULL) {
         statement.type = STATEMENT_PRINT;
+        print_statement.value = NULL;
+        print_statement.is_variable_reference = 0;
+        print_statement.has_array_access = 0;
+        array_access_init(&print_statement.array_access);
         statement.as.print_statement = print_statement;
         return statement;
     }
 
-    if (token->type == TOKEN_IDENTIFIER) {
-        Token *next_token = NULL;
-        if (parser->index + 1 < parser->count) {
-            next_token = &parser->tokens[parser->index + 1];
-        }
+    if (token->type == TOKEN_SAY) {
+        parser_advance(parser);
+        token = parser_peek(parser);
 
-        if (next_token != NULL && (next_token->type == TOKEN_LEFT_BRACKET ||
-                                   (next_token->type == TOKEN_DOT && parser->index + 2 < parser->count &&
-                                    parser->tokens[parser->index + 2].type == TOKEN_IDENTIFIER &&
-                                    strcmp(parser->tokens[parser->index + 2].value, "select") == 0))) {
-            if (!parse_array_access(parser, &print_statement.array_access)) {
-                statement.type = STATEMENT_PRINT;
-                print_statement.value = NULL;
-                print_statement.is_variable_reference = 0;
-                statement.as.print_statement = print_statement;
-                return statement;
-            }
-
-            print_statement.has_array_access = 1;
+        if (token == NULL) {
+            fprintf(stderr, "Syntax Error: Expected string literal or variable reference after 'say'.\n");
+            statement.type = STATEMENT_PRINT;
             print_statement.value = NULL;
             print_statement.is_variable_reference = 0;
-            statement.type = STATEMENT_PRINT;
+            print_statement.has_array_access = 0;
+            array_access_init(&print_statement.array_access);
             statement.as.print_statement = print_statement;
-            return statement;
-        }
-    }
-
-    if (token->type == TOKEN_IDENTIFIER && parser->index + 1 < parser->count && parser->tokens[parser->index + 1].type == TOKEN_EQUAL) {
-        char *name = drift_duplicate_string(token->value);
-        parser_advance(parser);
-        parser_advance(parser);
-
-        variable_declaration.name = name;
-        variable_declaration.is_assignment = 1;
-        variable_declaration.is_array_expression = 0;
-        variable_declaration.is_array_declared = 0;
-        array_access_init(&variable_declaration.array_access);
-
-        token = parser_peek(parser);
-        if (token == NULL) {
-            fprintf(stderr, "Syntax Error: Expected value after '='.\n");
-            variable_declaration.value = value_create_string(NULL);
-            statement.type = STATEMENT_VARIABLE_DECLARATION;
-            statement.as.variable_declaration = variable_declaration;
             return statement;
         }
 
@@ -421,195 +354,156 @@ Statement parser_parse(Parser *parser)
                                        (next_token->type == TOKEN_DOT && parser->index + 2 < parser->count &&
                                         parser->tokens[parser->index + 2].type == TOKEN_IDENTIFIER &&
                                         strcmp(parser->tokens[parser->index + 2].value, "select") == 0))) {
-                if (!parse_array_access(parser, &variable_declaration.array_access)) {
-                    free(name);
-                    variable_declaration.name = NULL;
-                    variable_declaration.value = value_create_string(NULL);
-                    statement.type = STATEMENT_VARIABLE_DECLARATION;
-                    statement.as.variable_declaration = variable_declaration;
+                if (!parse_array_access(parser, &print_statement.array_access)) {
+                    statement.type = STATEMENT_PRINT;
+                    print_statement.value = NULL;
+                    print_statement.is_variable_reference = 0;
+                    print_statement.has_array_access = 0;
+                    statement.as.print_statement = print_statement;
                     return statement;
                 }
-                variable_declaration.is_array_expression = 0;
-                variable_declaration.is_array_declared = 0;
-                variable_declaration.value = value_create_string(NULL);
-            } else {
-                variable_declaration.value = parse_literal_value(token);
+
+                print_statement.has_array_access = 1;
+                print_statement.value = NULL;
+                print_statement.is_variable_reference = 0;
+                statement.type = STATEMENT_PRINT;
+                statement.as.print_statement = print_statement;
+                return statement;
+            }
+
+            print_statement.is_variable_reference = 1;
+            print_statement.has_array_access = 0;
+            array_access_init(&print_statement.array_access);
+            print_statement.value = drift_duplicate_string(token->value);
+            parser_advance(parser);
+            statement.type = STATEMENT_PRINT;
+            statement.as.print_statement = print_statement;
+
+            token = parser_peek(parser);
+            if (token != NULL && is_statement_terminator(token)) {
                 parser_advance(parser);
             }
-        } else {
-            variable_declaration.value = parse_literal_value(token);
-            parser_advance(parser);
+
+            if (parser_peek(parser) != NULL && parser_peek(parser)->type != TOKEN_EOF && !is_statement_terminator(parser_peek(parser))) {
+                fprintf(stderr, "Syntax Error: unexpected extra tokens.\n");
+                free(print_statement.value);
+                print_statement.value = NULL;
+                statement.as.print_statement = print_statement;
+                return statement;
+            }
+
+            return statement;
         }
 
-        token = parser_peek(parser);
-        if (token != NULL && token->type == TOKEN_NEWLINE) {
+        if (token->type == TOKEN_STRING) {
+            print_statement.is_variable_reference = 0;
+            print_statement.has_array_access = 0;
+            array_access_init(&print_statement.array_access);
+
+            if (token->value != NULL && token->value[0] == '\'' && token->value[strlen(token->value) - 1] == '\'') {
+                size_t length = strlen(token->value) - 2U;
+                char *stripped = (char *)malloc(length + 1U);
+                if (stripped != NULL) {
+                    memcpy(stripped, token->value + 1, length);
+                    stripped[length] = '\0';
+                    print_statement.value = stripped;
+                } else {
+                    print_statement.value = drift_duplicate_string(token->value);
+                }
+            } else {
+                print_statement.value = drift_duplicate_string(token->value);
+            }
+
             parser_advance(parser);
+            statement.type = STATEMENT_PRINT;
+            statement.as.print_statement = print_statement;
+
+            token = parser_peek(parser);
+            if (token != NULL && is_statement_terminator(token)) {
+                parser_advance(parser);
+            }
+
+            if (parser_peek(parser) != NULL && parser_peek(parser)->type != TOKEN_EOF && !is_statement_terminator(parser_peek(parser))) {
+                fprintf(stderr, "Syntax Error: unexpected extra tokens.\n");
+                free(print_statement.value);
+                print_statement.value = NULL;
+                statement.as.print_statement = print_statement;
+                return statement;
+            }
+
+            return statement;
         }
 
-        if (parser_peek(parser) != NULL && parser_peek(parser)->type != TOKEN_EOF) {
-            fprintf(stderr, "Syntax Error: unexpected extra tokens.\n");
-            free(variable_declaration.name);
-            value_free(&variable_declaration.value);
-            variable_declaration.name = NULL;
+        fprintf(stderr, "Syntax Error: Expected string literal or variable reference after 'say'.\n");
+        statement.type = STATEMENT_PRINT;
+        print_statement.value = NULL;
+        print_statement.is_variable_reference = 0;
+        print_statement.has_array_access = 0;
+        array_access_init(&print_statement.array_access);
+        statement.as.print_statement = print_statement;
+        return statement;
+    }
+
+    if (token->type == TOKEN_IDENTIFIER && is_array_element_assignment(parser, parser->index)) {
+        VariableDeclarationSingle single;
+        variable_declaration_single_init(&single);
+        single.name = drift_duplicate_string(token->value);
+        single.is_assignment = 1;
+        single.is_array_element_assignment = 1;
+        if (!parse_array_access(parser, &single.array_access)) {
+            variable_declaration_single_free(&single);
             statement.type = STATEMENT_VARIABLE_DECLARATION;
             statement.as.variable_declaration = variable_declaration;
             return statement;
         }
+        if (parser_peek(parser) == NULL || parser_peek(parser)->type != TOKEN_EQUAL) {
+            fprintf(stderr, "Syntax Error: Expected '=' after array access.\n");
+            variable_declaration_single_free(&single);
+            statement.type = STATEMENT_VARIABLE_DECLARATION;
+            statement.as.variable_declaration = variable_declaration;
+            return statement;
+        }
+        parser_advance(parser);
+        token = parser_peek(parser);
+        single.value = parse_literal_value(token);
+        if (token == NULL || (single.value.type == VALUE_STRING && single.value.string_value == NULL)) {
+            fprintf(stderr, "Syntax Error: Expected literal value after '='.\n");
+            variable_declaration_single_free(&single);
+            statement.type = STATEMENT_VARIABLE_DECLARATION;
+            statement.as.variable_declaration = variable_declaration;
+            return statement;
+        } else {
+            parser_advance(parser);
+        }
 
+        variable_declaration.vars = (VariableDeclarationSingle *)malloc(sizeof(VariableDeclarationSingle));
+        if (variable_declaration.vars != NULL) {
+            variable_declaration.vars[0] = single;
+            variable_declaration.count = 1;
+        } else {
+            variable_declaration_single_free(&single);
+        }
         statement.type = STATEMENT_VARIABLE_DECLARATION;
         statement.as.variable_declaration = variable_declaration;
         return statement;
     }
 
-    if (token->type == TOKEN_VAR) {
-        parser_advance(parser);
-        variable_declaration.is_declaration = 1;
-
-        token = parser_peek(parser);
-        if (token == NULL || token->type != TOKEN_IDENTIFIER) {
-            fprintf(stderr, "Syntax Error: Expected variable identifier after 'var'.\n");
-            statement.type = STATEMENT_VARIABLE_DECLARATION;
-            variable_declaration.name = NULL;
-            variable_declaration.value = value_create_string(NULL);
-            statement.as.variable_declaration = variable_declaration;
-            return statement;
-        }
-
-        if (!is_identifier_valid(token->value)) {
-            fprintf(stderr, "Syntax Error: Invalid identifier '%s'.\n", token->value);
-            statement.type = STATEMENT_VARIABLE_DECLARATION;
-            variable_declaration.name = NULL;
-            variable_declaration.value = value_create_string(NULL);
-            statement.as.variable_declaration = variable_declaration;
-            return statement;
-        }
-
-        variable_declaration.name = drift_duplicate_string(token->value);
-        parser_advance(parser);
-
-        variable_declaration.is_assignment = 0;
-        variable_declaration.is_array_expression = 0;
-        variable_declaration.is_array_declared = 0;
-        array_access_init(&variable_declaration.array_access);
-        variable_declaration.value = value_create_string(NULL);
-
-        token = parser_peek(parser);
-        if (token == NULL) {
-            fprintf(stderr, "Syntax Error: Expected '=' or array dimensions after variable name.\n");
-            free(variable_declaration.name);
-            variable_declaration.name = NULL;
-            variable_declaration.value = value_create_string(NULL);
+    if (token->type == TOKEN_IDENTIFIER && parser->index + 1 < parser->count && parser->tokens[parser->index + 1].type == TOKEN_EQUAL) {
+        VariableDeclarationSingle single;
+        variable_declaration_single_init(&single);
+        if (!parse_single_declaration(parser, &single, 0)) {
+            variable_declaration_single_free(&single);
             statement.type = STATEMENT_VARIABLE_DECLARATION;
             statement.as.variable_declaration = variable_declaration;
             return statement;
         }
 
-        if (token->type == TOKEN_LEFT_BRACKET) {
-            int parse_error = 0;
-            variable_declaration.is_array_declared = 1;
-            variable_declaration.value = parse_array_declaration(parser, &parse_error);
-            if (parse_error) {
-                free(variable_declaration.name);
-                variable_declaration.name = NULL;
-                variable_declaration.value = value_create_string(NULL);
-                statement.type = STATEMENT_VARIABLE_DECLARATION;
-                statement.as.variable_declaration = variable_declaration;
-                return statement;
-            }
-
-            token = parser_peek(parser);
-            if (token != NULL && token->type == TOKEN_EQUAL) {
-                parser_advance(parser);
-                variable_declaration.is_assignment = 1;
-
-                token = parser_peek(parser);
-                if (token == NULL) {
-                    fprintf(stderr, "Syntax Error: Expected value after '='.\n");
-                    free(variable_declaration.name);
-                    variable_declaration.name = NULL;
-                    variable_declaration.value = value_create_string(NULL);
-                    statement.type = STATEMENT_VARIABLE_DECLARATION;
-                    statement.as.variable_declaration = variable_declaration;
-                    return statement;
-                }
-
-                if (token->type == TOKEN_IDENTIFIER) {
-                    Token *next_token = NULL;
-                    if (parser->index + 1 < parser->count) {
-                        next_token = &parser->tokens[parser->index + 1];
-                    }
-
-                    if (next_token != NULL && (next_token->type == TOKEN_LEFT_BRACKET ||
-                                               (next_token->type == TOKEN_DOT && parser->index + 2 < parser->count &&
-                                                parser->tokens[parser->index + 2].type == TOKEN_IDENTIFIER &&
-                                                strcmp(parser->tokens[parser->index + 2].value, "select") == 0))) {
-                        if (!parse_array_access(parser, &variable_declaration.array_access)) {
-                            free(variable_declaration.name);
-                            variable_declaration.name = NULL;
-                            variable_declaration.value = value_create_string(NULL);
-                            statement.type = STATEMENT_VARIABLE_DECLARATION;
-                            statement.as.variable_declaration = variable_declaration;
-                            return statement;
-                        }
-                        variable_declaration.is_array_expression = variable_declaration.is_array_declared;
-                        variable_declaration.value = value_create_string(NULL);
-                    } else {
-                        variable_declaration.value = parse_literal_value(token);
-                        parser_advance(parser);
-                    }
-                } else {
-                    variable_declaration.value = parse_literal_value(token);
-                    parser_advance(parser);
-                }
-            }
-        } else if (token->type == TOKEN_EQUAL) {
-            parser_advance(parser);
-            variable_declaration.is_assignment = 1;
-
-            token = parser_peek(parser);
-            if (token == NULL) {
-                fprintf(stderr, "Syntax Error: Expected value after '='.\n");
-                free(variable_declaration.name);
-                variable_declaration.name = NULL;
-                variable_declaration.value = value_create_string(NULL);
-                statement.type = STATEMENT_VARIABLE_DECLARATION;
-                statement.as.variable_declaration = variable_declaration;
-                return statement;
-            }
-
-            if (token->type == TOKEN_IDENTIFIER) {
-                Token *next_token = NULL;
-                if (parser->index + 1 < parser->count) {
-                    next_token = &parser->tokens[parser->index + 1];
-                }
-
-                if (next_token != NULL && (next_token->type == TOKEN_LEFT_BRACKET ||
-                                           (next_token->type == TOKEN_DOT && parser->index + 2 < parser->count &&
-                                            parser->tokens[parser->index + 2].type == TOKEN_IDENTIFIER &&
-                                            strcmp(parser->tokens[parser->index + 2].value, "select") == 0))) {
-                    if (!parse_array_access(parser, &variable_declaration.array_access)) {
-                        free(variable_declaration.name);
-                        variable_declaration.name = NULL;
-                        variable_declaration.value = value_create_string(NULL);
-                        statement.type = STATEMENT_VARIABLE_DECLARATION;
-                        statement.as.variable_declaration = variable_declaration;
-                        return statement;
-                    }
-                    variable_declaration.is_array_expression = variable_declaration.is_array_declared;
-                    variable_declaration.value = value_create_string(NULL);
-                } else {
-                    variable_declaration.value = parse_literal_value(token);
-                    parser_advance(parser);
-                }
-            } else {
-                variable_declaration.value = parse_literal_value(token);
-                parser_advance(parser);
-            }
+        variable_declaration.vars = (VariableDeclarationSingle *)malloc(sizeof(VariableDeclarationSingle));
+        if (variable_declaration.vars != NULL) {
+            variable_declaration.vars[0] = single;
+            variable_declaration.count = 1;
         } else {
-            fprintf(stderr, "Syntax Error: Expected '=' or array dimensions after variable name.\n");
-            free(variable_declaration.name);
-            variable_declaration.name = NULL;
-            variable_declaration.value = value_create_string(NULL);
+            variable_declaration_single_free(&single);
             statement.type = STATEMENT_VARIABLE_DECLARATION;
             statement.as.variable_declaration = variable_declaration;
             return statement;
@@ -622,11 +516,71 @@ Statement parser_parse(Parser *parser)
 
         if (parser_peek(parser) != NULL && parser_peek(parser)->type != TOKEN_EOF && !is_statement_terminator(parser_peek(parser))) {
             fprintf(stderr, "Syntax Error: unexpected extra tokens.\n");
-            free(variable_declaration.name);
-            value_free(&variable_declaration.value);
-            variable_declaration.name = NULL;
+            variable_declaration_free(&variable_declaration);
             statement.type = STATEMENT_VARIABLE_DECLARATION;
-            statement.as.variable_declaration = variable_declaration;
+            statement.as.variable_declaration.vars = NULL;
+            statement.as.variable_declaration.count = 0;
+            return statement;
+        }
+
+        statement.type = STATEMENT_VARIABLE_DECLARATION;
+        statement.as.variable_declaration = variable_declaration;
+        return statement;
+    }
+
+    if (token->type == TOKEN_VAR) {
+        parser_advance(parser);
+        variable_declaration.vars = NULL;
+        variable_declaration.count = 0;
+
+        while (1) {
+            VariableDeclarationSingle single;
+            variable_declaration_single_init(&single);
+
+            if (!parse_single_declaration(parser, &single, 1)) {
+                variable_declaration_single_free(&single);
+                variable_declaration_free(&variable_declaration);
+                statement.type = STATEMENT_VARIABLE_DECLARATION;
+                statement.as.variable_declaration.vars = NULL;
+                statement.as.variable_declaration.count = 0;
+                return statement;
+            }
+
+            VariableDeclarationSingle *new_vars = (VariableDeclarationSingle *)realloc(
+                variable_declaration.vars,
+                (variable_declaration.count + 1U) * sizeof(VariableDeclarationSingle)
+            );
+            if (new_vars == NULL) {
+                fprintf(stderr, "Error: out of memory while parsing variable declaration\n");
+                variable_declaration_single_free(&single);
+                variable_declaration_free(&variable_declaration);
+                statement.type = STATEMENT_VARIABLE_DECLARATION;
+                statement.as.variable_declaration.vars = NULL;
+                statement.as.variable_declaration.count = 0;
+                return statement;
+            }
+            variable_declaration.vars = new_vars;
+            variable_declaration.vars[variable_declaration.count++] = single;
+
+            token = parser_peek(parser);
+            if (token != NULL && token->type == TOKEN_COMMA) {
+                parser_advance(parser);
+                continue;
+            }
+            break;
+        }
+
+        token = parser_peek(parser);
+        if (token != NULL && is_statement_terminator(token)) {
+            parser_advance(parser);
+        }
+
+        if (parser_peek(parser) != NULL && parser_peek(parser)->type != TOKEN_EOF && !is_statement_terminator(parser_peek(parser))) {
+            fprintf(stderr, "Syntax Error: unexpected extra tokens.\n");
+            variable_declaration_free(&variable_declaration);
+            statement.type = STATEMENT_VARIABLE_DECLARATION;
+            statement.as.variable_declaration.vars = NULL;
+            statement.as.variable_declaration.count = 0;
             return statement;
         }
 
@@ -667,8 +621,12 @@ void variable_declaration_free(VariableDeclaration *declaration)
         return;
     }
 
-    free(declaration->name);
-    declaration->name = NULL;
-    value_free(&declaration->value);
-    array_access_free(&declaration->array_access);
+    if (declaration->vars != NULL) {
+        for (size_t i = 0; i < declaration->count; ++i) {
+            variable_declaration_single_free(&declaration->vars[i]);
+        }
+        free(declaration->vars);
+        declaration->vars = NULL;
+    }
+    declaration->count = 0;
 }

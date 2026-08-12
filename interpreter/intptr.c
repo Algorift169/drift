@@ -94,6 +94,45 @@ static int format_array_value_to_string(const ArrayValue *array, StringBuilder *
 static int format_array_recursive_to_string(const ArrayValue *array, size_t dimension, size_t base_offset, StringBuilder *sb);
 static int format_array_element_to_string(const ArrayValue *array, const long *indices, size_t index_count, StringBuilder *sb);
 
+static int resolve_array_indices(const ArrayAccess *access, Environment *environment, long **out_indices)
+{
+    if (access == NULL || environment == NULL || out_indices == NULL) {
+        return 0;
+    }
+
+    long *indices = NULL;
+    if (access->index_count > 0) {
+        indices = (long *)malloc(access->index_count * sizeof(long));
+        if (indices == NULL) {
+            fprintf(stderr, "Error: out of memory while resolving array indices\n");
+            return 0;
+        }
+    }
+
+    for (size_t i = 0; i < access->index_count; ++i) {
+        indices[i] = access->indices[i];
+        if (access->index_names != NULL && access->index_names[i] != NULL) {
+            Value index_value;
+            if (!environment_get(environment, access->index_names[i], &index_value)) {
+                fprintf(stderr, "Runtime Error: Undefined variable '%s'.\n", access->index_names[i]);
+                free(indices);
+                return 0;
+            }
+            if (index_value.type != VALUE_INTEGER) {
+                fprintf(stderr, "Runtime Error: Array index variable '%s' must be an integer.\n", access->index_names[i]);
+                value_free(&index_value);
+                free(indices);
+                return 0;
+            }
+            indices[i] = index_value.integer_value;
+            value_free(&index_value);
+        }
+    }
+
+    *out_indices = indices;
+    return 1;
+}
+
 static int parse_array_template_expression(const char *expr, ArrayAccess *access)
 {
     if (expr == NULL || access == NULL) {
@@ -463,7 +502,6 @@ int interpreter_execute(Statement statement, Environment *environment)
         }
 
         if (print_statement->has_array_access) {
-            int error = 0;
             Value value;
             if (!environment_get(environment, print_statement->array_access.name, &value)) {
                 fprintf(stderr, "Runtime Error: Undefined variable '%s'.\n", print_statement->array_access.name);
@@ -498,7 +536,13 @@ int interpreter_execute(Statement statement, Environment *environment)
             } else if (print_statement->array_access.is_selection) {
                 print_array_selection(value.array_value, &print_statement->array_access);
             } else {
-                print_array_element(value.array_value, print_statement->array_access.indices, print_statement->array_access.index_count);
+                long *indices = NULL;
+                if (!resolve_array_indices(&print_statement->array_access, environment, &indices)) {
+                    value_free(&value);
+                    return 1;
+                }
+                print_array_element(value.array_value, indices, print_statement->array_access.index_count);
+                free(indices);
             }
 
             value_free(&value);
@@ -533,144 +577,185 @@ int interpreter_execute(Statement statement, Environment *environment)
 
     if (statement.type == STATEMENT_VARIABLE_DECLARATION) {
         VariableDeclaration *declaration = &statement.as.variable_declaration;
-        Value value;
 
-        if (declaration->name == NULL) {
-            fprintf(stderr, "Syntax Error: Expected variable identifier after 'var'.\n");
+        if (declaration->vars == NULL || declaration->count == 0) {
             return 1;
         }
 
-        if (declaration->is_declaration && environment_exists(environment, declaration->name)) {
-            fprintf(stderr, "Runtime Error: Variable '%s' is already declared.\n", declaration->name);
-            return 1;
-        }
+        for (size_t i = 0; i < declaration->count; ++i) {
+            VariableDeclarationSingle *single = &declaration->vars[i];
+            Value value;
 
-        if (declaration->is_assignment && declaration->is_array_expression) {
-            Value source;
-            if (!environment_get(environment, declaration->array_access.name, &source)) {
-                fprintf(stderr, "Runtime Error: Undefined variable '%s'.\n", declaration->array_access.name);
+            if (single->name == NULL) {
+                if (single->is_declaration) {
+                    fprintf(stderr, "Syntax Error: Expected variable identifier after 'var'.\n");
+                } else {
+                    fprintf(stderr, "Syntax Error: Expected variable identifier.\n");
+                }
                 return 1;
             }
 
-            if (source.type != VALUE_ARRAY) {
-                fprintf(stderr, "Runtime Error: Variable '%s' is not an array.\n", declaration->array_access.name);
-                value_free(&source);
+            if (single->is_array_element_assignment) {
+                Value array_value;
+                long *indices = NULL;
+                if (!environment_get(environment, single->array_access.name, &array_value)) {
+                    fprintf(stderr, "Runtime Error: Undefined variable '%s'.\n", single->array_access.name);
+                    return 1;
+                }
+                if (array_value.type != VALUE_ARRAY) {
+                    fprintf(stderr, "Runtime Error: Variable '%s' is not an array.\n", single->array_access.name);
+                    value_free(&array_value);
+                    return 1;
+                }
+                if (!resolve_array_indices(&single->array_access, environment, &indices) ||
+                    !array_value_set_element(array_value.array_value, indices, single->array_access.index_count, &single->value)) {
+                    fprintf(stderr, "Runtime Error: Invalid array assignment.\n");
+                    free(indices);
+                    value_free(&array_value);
+                    return 1;
+                }
+                free(indices);
+                if (!environment_set(environment, single->array_access.name, &array_value)) {
+                    fprintf(stderr, "Runtime Error: Unable to update array '%s'.\n", single->array_access.name);
+                    value_free(&array_value);
+                    return 1;
+                }
+                value_free(&array_value);
+                continue;
+            }
+
+            if (single->is_declaration && environment_exists(environment, single->name)) {
+                fprintf(stderr, "Runtime Error: Variable '%s' is already declared.\n", single->name);
                 return 1;
             }
 
-            if (!declaration->array_access.is_selection) {
-                fprintf(stderr, "Syntax Error: Only select() expressions are supported for assignment.\n");
-                value_free(&source);
-                return 1;
-            }
+            if (single->is_assignment && single->is_array_expression) {
+                Value source;
+                if (!environment_get(environment, single->array_access.name, &source)) {
+                    fprintf(stderr, "Runtime Error: Undefined variable '%s'.\n", single->array_access.name);
+                    return 1;
+                }
 
-            Value *values = (Value *)malloc(declaration->array_access.selection_count * sizeof(Value));
-            if (values == NULL) {
-                fprintf(stderr, "Error: out of memory while building dynamic array\n");
-                value_free(&source);
-                return 1;
-            }
+                if (source.type != VALUE_ARRAY) {
+                    fprintf(stderr, "Runtime Error: Variable '%s' is not an array.\n", single->array_access.name);
+                    value_free(&source);
+                    return 1;
+                }
 
-            if (declaration->array_access.selection_tuple_size != source.array_value->dimension_count) {
-                fprintf(stderr, "Runtime Error: Coordinate length %zu does not match array rank %ld.\n", declaration->array_access.selection_tuple_size, source.array_value->dimension_count);
-                free(values);
-                value_free(&source);
-                return 1;
-            }
+                if (!single->array_access.is_selection) {
+                    fprintf(stderr, "Syntax Error: Only select() expressions are supported for assignment.\n");
+                    value_free(&source);
+                    return 1;
+                }
 
-            for (size_t i = 0; i < declaration->array_access.selection_count; ++i) {
-                const long *indices = declaration->array_access.selection_indices + i * declaration->array_access.selection_tuple_size;
-                int error = 0;
-                const Value *element = array_value_get_element(source.array_value, indices, declaration->array_access.selection_tuple_size, &error);
-                if (element == NULL) {
-                    fprintf(stderr, "Runtime Error: Array index out of bounds.\n");
-                    for (size_t j = 0; j < i; ++j) {
-                        value_free(&values[j]);
-                    }
+                Value *values = (Value *)malloc(single->array_access.selection_count * sizeof(Value));
+                if (values == NULL) {
+                    fprintf(stderr, "Error: out of memory while building dynamic array\n");
+                    value_free(&source);
+                    return 1;
+                }
+
+                if (single->array_access.selection_tuple_size != source.array_value->dimension_count) {
+                    fprintf(stderr, "Runtime Error: Coordinate length %zu does not match array rank %ld.\n", single->array_access.selection_tuple_size, source.array_value->dimension_count);
                     free(values);
                     value_free(&source);
                     return 1;
                 }
-                values[i] = value_copy(element);
-            }
 
-            ArrayValue *dynamic_array = array_value_create_dynamic_from_values(source.array_value->element_type, values, declaration->array_access.selection_count);
-            for (size_t i = 0; i < declaration->array_access.selection_count; ++i) {
-                value_free(&values[i]);
-            }
-            free(values);
-            value_free(&source);
+                for (size_t k = 0; k < single->array_access.selection_count; ++k) {
+                    const long *indices = single->array_access.selection_indices + k * single->array_access.selection_tuple_size;
+                    int error = 0;
+                    const Value *element = array_value_get_element(source.array_value, indices, single->array_access.selection_tuple_size, &error);
+                    if (element == NULL) {
+                        fprintf(stderr, "Runtime Error: Array index out of bounds.\n");
+                        for (size_t j = 0; j < k; ++j) {
+                            value_free(&values[j]);
+                        }
+                        free(values);
+                        value_free(&source);
+                        return 1;
+                    }
+                    values[k] = value_copy(element);
+                }
 
-            if (dynamic_array == NULL) {
-                fprintf(stderr, "Error: out of memory while creating dynamic array\n");
-                return 1;
-            }
-
-            value = value_create_array(dynamic_array);
-        } else if (declaration->is_assignment && declaration->array_access.name != NULL) {
-            Value source;
-            if (!environment_get(environment, declaration->array_access.name, &source)) {
-                fprintf(stderr, "Runtime Error: Undefined variable '%s'.\n", declaration->array_access.name);
-                return 1;
-            }
-
-            if (source.type != VALUE_ARRAY) {
-                fprintf(stderr, "Runtime Error: Variable '%s' is not an array.\n", declaration->array_access.name);
+                ArrayValue *dynamic_array = array_value_create_dynamic_from_values(source.array_value->element_type, values, single->array_access.selection_count);
+                for (size_t k = 0; k < single->array_access.selection_count; ++k) {
+                    value_free(&values[k]);
+                }
+                free(values);
                 value_free(&source);
-                return 1;
-            }
 
-            if (declaration->array_access.is_selection) {
-                if (declaration->array_access.selection_count != 1) {
-                    fprintf(stderr, "Runtime Error: Selection yields multiple values; declare an array variable with [].\n");
+                if (dynamic_array == NULL) {
+                    fprintf(stderr, "Error: out of memory while creating dynamic array\n");
+                    return 1;
+                }
+
+                value = value_create_array(dynamic_array);
+            } else if (single->is_assignment && single->array_access.name != NULL) {
+                Value source;
+                if (!environment_get(environment, single->array_access.name, &source)) {
+                    fprintf(stderr, "Runtime Error: Undefined variable '%s'.\n", single->array_access.name);
+                    return 1;
+                }
+
+                if (source.type != VALUE_ARRAY) {
+                    fprintf(stderr, "Runtime Error: Variable '%s' is not an array.\n", single->array_access.name);
                     value_free(&source);
                     return 1;
                 }
 
-                if (declaration->array_access.selection_tuple_size != source.array_value->dimension_count) {
-                    fprintf(stderr, "Runtime Error: Coordinate length %zu does not match array rank %ld.\n", declaration->array_access.selection_tuple_size, source.array_value->dimension_count);
+                if (single->array_access.is_selection) {
+                    if (single->array_access.selection_count != 1) {
+                        fprintf(stderr, "Runtime Error: Selection yields multiple values; declare an array variable with [].\n");
+                        value_free(&source);
+                        return 1;
+                    }
+
+                    if (single->array_access.selection_tuple_size != source.array_value->dimension_count) {
+                        fprintf(stderr, "Runtime Error: Coordinate length %zu does not match array rank %ld.\n", single->array_access.selection_tuple_size, source.array_value->dimension_count);
+                        value_free(&source);
+                        return 1;
+                    }
+
+                    int error = 0;
+                    const Value *element = array_value_get_element(source.array_value, single->array_access.selection_indices, single->array_access.selection_tuple_size, &error);
+                    if (element == NULL) {
+                        fprintf(stderr, "Runtime Error: Array index out of bounds.\n");
+                        value_free(&source);
+                        return 1;
+                    }
+                    value = value_copy(element);
+                } else if (single->array_access.is_whole_array) {
+                    fprintf(stderr, "Syntax Error: Array variable '%s' must be accessed explicitly.\n", single->array_access.name);
                     value_free(&source);
                     return 1;
+                } else {
+                    if (single->array_access.index_count == 0) {
+                        fprintf(stderr, "Runtime Error: Invalid array access.\n");
+                        value_free(&source);
+                        return 1;
+                    }
+
+                    int error = 0;
+                    const Value *element = array_value_get_element(source.array_value, single->array_access.indices, single->array_access.index_count, &error);
+                    if (element == NULL) {
+                        fprintf(stderr, "Runtime Error: Array index out of bounds.\n");
+                        value_free(&source);
+                        return 1;
+                    }
+                    value = value_copy(element);
                 }
 
-                int error = 0;
-                const Value *element = array_value_get_element(source.array_value, declaration->array_access.selection_indices, declaration->array_access.selection_tuple_size, &error);
-                if (element == NULL) {
-                    fprintf(stderr, "Runtime Error: Array index out of bounds.\n");
-                    value_free(&source);
-                    return 1;
-                }
-                value = value_copy(element);
-            } else if (declaration->array_access.is_whole_array) {
-                fprintf(stderr, "Syntax Error: Array variable '%s' must be accessed explicitly.\n", declaration->array_access.name);
                 value_free(&source);
-                return 1;
             } else {
-                if (declaration->array_access.index_count == 0) {
-                    fprintf(stderr, "Runtime Error: Invalid array access.\n");
-                    value_free(&source);
-                    return 1;
-                }
-
-                int error = 0;
-                const Value *element = array_value_get_element(source.array_value, declaration->array_access.indices, declaration->array_access.index_count, &error);
-                if (element == NULL) {
-                    fprintf(stderr, "Runtime Error: Array index out of bounds.\n");
-                    value_free(&source);
-                    return 1;
-                }
-                value = value_copy(element);
+                value = single->value;
             }
 
-            value_free(&source);
-        } else {
-            value = declaration->value;
-        }
-
-        if (!environment_set(environment, declaration->name, &value)) {
-            fprintf(stderr, "Runtime Error: Unable to declare variable '%s'.\n", declaration->name);
-            value_free(&value);
-            return 1;
+            if (!environment_set(environment, single->name, &value)) {
+                fprintf(stderr, "Runtime Error: Unable to declare variable '%s'.\n", single->name);
+                value_free(&value);
+                return 1;
+            }
         }
 
         return 0;

@@ -1382,7 +1382,14 @@ int parse_array_access(Parser *parser, ArrayAccess *access)
         }
 
         long index = 0;
-        if (!parse_integer_token(next, &index)) {
+        char *index_name = NULL;
+        if (next->type == TOKEN_IDENTIFIER) {
+            index_name = drift_duplicate_string(next->value);
+            if (index_name == NULL) {
+                fprintf(stderr, "Error: out of memory while reading array index\n");
+                return 0;
+            }
+        } else if (!parse_integer_token(next, &index)) {
             fprintf(stderr, "Syntax Error: Invalid array index.\n");
             return 0;
         }
@@ -1393,12 +1400,16 @@ int parse_array_access(Parser *parser, ArrayAccess *access)
         }
 
         long *new_indices = (long *)realloc(access->indices, (access->index_count + 1U) * sizeof(long));
-        if (new_indices == NULL) {
+        char **new_index_names = (char **)realloc(access->index_names, (access->index_count + 1U) * sizeof(char *));
+        if (new_indices == NULL || new_index_names == NULL) {
             fprintf(stderr, "Error: out of memory while reading array indices\n");
+            free(index_name);
             return 0;
         }
         access->indices = new_indices;
+        access->index_names = new_index_names;
         access->indices[access->index_count++] = index;
+        access->index_names[access->index_count - 1U] = index_name;
     }
 
     if (parser_peek(parser) != NULL && parser_peek(parser)->type == TOKEN_DOT) {
@@ -1420,6 +1431,7 @@ void array_access_init(ArrayAccess *access)
     access->is_selection = 0;
     access->index_count = 0;
     access->indices = NULL;
+    access->index_names = NULL;
     access->selection_count = 0;
     access->selection_tuple_size = 0;
     access->selection_indices = NULL;
@@ -1434,10 +1446,15 @@ void array_access_free(ArrayAccess *access)
 
     free(access->name);
     free(access->indices);
+    for (size_t i = 0; i < access->index_count; ++i) {
+        free(access->index_names[i]);
+    }
+    free(access->index_names);
     free(access->selection_indices);
     free(access->selection_breaks);
     access->name = NULL;
     access->indices = NULL;
+    access->index_names = NULL;
     access->selection_indices = NULL;
     access->selection_breaks = NULL;
 }

@@ -9,9 +9,15 @@ typedef struct {
     Value value;
     int is_declaration;
     int is_assignment;
+    int is_array_element_assignment;
     int is_array_expression;
     int is_array_declared;
     ArrayAccess array_access;
+} VariableDeclarationSingle;
+
+typedef struct {
+    VariableDeclarationSingle *vars;
+    size_t count;
 } VariableDeclaration;
 
 typedef struct {

@@ -14,6 +14,7 @@ typedef struct {
     int is_selection;
     size_t index_count;
     long *indices;
+    char **index_names;
     size_t selection_count;
     size_t selection_tuple_size;
     long *selection_indices;

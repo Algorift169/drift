@@ -22,5 +22,6 @@ ArrayValue *array_value_copy(const ArrayValue *source);
 void array_value_free(ArrayValue *array);
 int array_value_get_flat_index(const ArrayValue *array, const long *indices, size_t index_count, size_t *out_index);
 const Value *array_value_get_element(const ArrayValue *array, const long *indices, size_t index_count, int *error);
+int array_value_set_element(ArrayValue *array, const long *indices, size_t index_count, const Value *value);
 
 #endif
