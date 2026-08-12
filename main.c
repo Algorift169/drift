@@ -7,6 +7,7 @@
 #include "drift/lexer.h"
 #include "drift/parser.h"
 #include "drift/interpreter.h"
+#include "drift/executable_comments.h"
 
 static char *read_file_to_string(const char *path)
 {
@@ -59,25 +60,35 @@ static char *read_file_to_string(const char *path)
     return buffer;
 }
 
-static char *trim_whitespace(char *text)
+static char *trim_whitespace(const char *text)
 {
-    char *end;
+    const char *start = text;
+    const char *end;
+    char *result;
+    size_t len;
 
-    while (*text != '\0' && isspace((unsigned char)*text)) {
-        text++;
+    while (*start != '\0' && isspace((unsigned char)*start)) {
+        start++;
     }
 
-    if (*text == '\0') {
-        return text;
+    if (*start == '\0') {
+        result = (char *)malloc(1);
+        if (result) result[0] = '\0';
+        return result;
     }
 
-    end = text + strlen(text) - 1;
-    while (end > text && isspace((unsigned char)*end)) {
-        *end = '\0';
+    end = start + strlen(start) - 1;
+    while (end >= start && isspace((unsigned char)*end)) {
         end--;
     }
 
-    return text;
+    len = end - start + 1;
+    result = (char *)malloc(len + 1);
+    if (result) {
+        memcpy(result, start, len);
+        result[len] = '\0';
+    }
+    return result;
 }
 
 static void statement_free(Statement *statement)
@@ -101,9 +112,16 @@ static int execute_source(const char *source, Environment *environment)
     Parser parser;
     Statement statement;
     int result = 0;
+    char *processed_source = NULL;
 
-    lexer = lexer_create(source);
+    processed_source = extract_executable_from_exc_blocks(source);
+    if (processed_source == NULL) {
+        return 1;
+    }
+
+    lexer = lexer_create(processed_source);
     tokens = lexer_scan_all(&lexer, &token_count);
+    free(processed_source);
     if (tokens == NULL) {
         return 1;
     }
@@ -180,8 +198,10 @@ static void run_repl(void)
 
         char *trimmed = trim_whitespace(input_buffer);
         if (strcmp(trimmed, "exit") == 0 || strcmp(trimmed, "quit") == 0) {
+            free(trimmed);
             break;
         }
+        free(trimmed);
 
         if (is_block_comment_open(input_buffer)) {
             printf("... ");
@@ -189,9 +209,11 @@ static void run_repl(void)
             continue;
         }
 
-        if (trimmed[0] != '\0') {
+        char *trimmed2 = trim_whitespace(input_buffer);
+        if (trimmed2[0] != '\0') {
             execute_source(input_buffer, &environment);
         }
+        free(trimmed2);
 
         free(input_buffer);
         input_buffer = NULL;
