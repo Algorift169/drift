@@ -1,0 +1,44 @@
+// Assignment and compound assignment operators: = += -= *= /= %=
+var x = 10
+say x
+
+var y = 5
+y += 3
+say y
+
+var z = 20
+z -= 5
+say z
+
+var a = 4
+a *= 3
+say a
+
+var b = 12
+b /= 3
+say b
+
+var c = 17
+c %= 5
+say c
+
+// Bitwise assignment
+var d = 12
+d &= 10
+say d
+
+var e = 5
+e |= 3
+say e
+
+var f = 5
+f ^= 3
+say f
+
+var g = 8
+g <<= 2
+say g
+
+var h = 32
+h >>= 2
+say h

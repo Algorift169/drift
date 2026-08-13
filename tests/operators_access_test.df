@@ -1,0 +1,21 @@
+// Array access operator: []
+var arr = [10, 20, 30, 40, 50]
+say arr[0]
+say arr[2]
+say arr[4]
+
+// 2D array access
+var matrix = [[1, 2, 3], [4, 5, 6], [7, 8, 9]]
+say matrix[0][1]
+say matrix[1][2]
+say matrix[2][0]
+
+// Array modification
+var nums = [5, 10, 15]
+nums[1] = 12
+say nums[1]
+
+// String indexing (if supported)
+var str = "hello"
+say str[0]
+say str[4]

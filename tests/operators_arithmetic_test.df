@@ -1,0 +1,23 @@
+// Arithmetic operators: + - * / %
+// Testing with variable assignments
+var a = 5 + 3
+say a
+
+var b = 10 - 4
+say b
+
+var c = 6 * 7
+say c
+
+var d = 20 / 4
+say d
+
+var e = 17 % 5
+say e
+
+// Testing with float operations
+var f = 5.5 + 2.3
+say f
+
+var g = 10.0 - 3.5
+say g

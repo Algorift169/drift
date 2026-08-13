@@ -1,0 +1,18 @@
+// Relational operators: == != > < >= <=
+var a = 5 == 5
+say a
+
+var b = 5 != 3
+say b
+
+var c = 10 > 5
+say c
+
+var d = 3 < 8
+say d
+
+var e = 10 >= 10
+say e
+
+var f = 5 <= 10
+say f

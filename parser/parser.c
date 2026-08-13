@@ -3,6 +3,7 @@
 #include <string.h>
 
 #include "drift/array.h"
+#include "drift/array_value.h"
 #include "drift/parser.h"
 
 static Token *parser_peek(Parser *parser)
@@ -23,9 +24,31 @@ static Token *parser_advance(Parser *parser)
     return &parser->tokens[parser->index++];
 }
 
+static int parser_expect(Parser *parser, TokenType type, const char *message)
+{
+    Token *token = parser_peek(parser);
+    if (token == NULL || token->type != type) {
+        if (message != NULL) {
+            fprintf(stderr, "%s\n", message);
+        }
+        return 0;
+    }
+    parser_advance(parser);
+    return 1;
+}
+
 static int is_statement_terminator(Token *token)
 {
     return token != NULL && (token->type == TOKEN_NEWLINE || token->type == TOKEN_SEMICOLON);
+}
+
+static int is_assignment_operator_token(TokenType type)
+{
+    return type == TOKEN_EQUAL || type == TOKEN_PLUS_EQUAL || type == TOKEN_MINUS_EQUAL ||
+           type == TOKEN_STAR_EQUAL || type == TOKEN_SLASH_EQUAL || type == TOKEN_PERCENT_EQUAL ||
+           type == TOKEN_AMPERSAND_EQUAL || type == TOKEN_PIPE_EQUAL || type == TOKEN_CARET_EQUAL ||
+           type == TOKEN_SHIFT_LEFT_EQUAL || type == TOKEN_SHIFT_RIGHT_EQUAL || type == TOKEN_PLUS_PLUS ||
+           type == TOKEN_MINUS_MINUS;
 }
 
 static int is_array_element_assignment(Parser *parser, size_t start)
@@ -136,6 +159,99 @@ static Value parse_literal_value(Token *token)
     return value_create_string(NULL);
 }
 
+static Value parse_array_literal_value(Parser *parser, int *error)
+{
+    Value result = value_create_null();
+    Value *values = NULL;
+    size_t value_count = 0;
+    ValueType element_type = VALUE_NULL;
+
+    if (parser == NULL || error == NULL) {
+        return result;
+    }
+
+    *error = 0;
+    if (parser_peek(parser) == NULL || parser_peek(parser)->type != TOKEN_LEFT_BRACKET) {
+        *error = 1;
+        return result;
+    }
+    parser_advance(parser);
+
+    while (parser_peek(parser) != NULL && parser_peek(parser)->type != TOKEN_RIGHT_BRACKET) {
+        Token *token = parser_peek(parser);
+        Value item = value_create_null();
+
+        if (token == NULL) {
+            *error = 1;
+            break;
+        }
+
+        if (token->type == TOKEN_LEFT_BRACKET) {
+            int nested_error = 0;
+            item = parse_array_literal_value(parser, &nested_error);
+            if (nested_error) {
+                *error = 1;
+                break;
+            }
+        } else if (token->type == TOKEN_IDENTIFIER || token->type == TOKEN_INTEGER || token->type == TOKEN_FLOAT ||
+                   token->type == TOKEN_STRING || token->type == TOKEN_TRUE || token->type == TOKEN_FALSE ||
+                   token->type == TOKEN_NULL || token->type == TOKEN_INFINITY) {
+            item = parse_literal_value(token);
+            parser_advance(parser);
+        } else {
+            fprintf(stderr, "Syntax Error: Invalid array literal element.\n");
+            *error = 1;
+            break;
+        }
+
+        if (value_count == 0) {
+            element_type = item.type;
+        }
+
+        Value *new_values = (Value *)realloc(values, (value_count + 1U) * sizeof(Value));
+        if (new_values == NULL) {
+            fprintf(stderr, "Error: out of memory while parsing array literal.\n");
+            value_free(&item);
+            *error = 1;
+            break;
+        }
+        values = new_values;
+        values[value_count++] = item;
+
+        token = parser_peek(parser);
+        if (token != NULL && token->type == TOKEN_COMMA) {
+            parser_advance(parser);
+        }
+    }
+
+    if (*error == 0 && !parser_expect(parser, TOKEN_RIGHT_BRACKET, "Syntax Error: Expected ']' to close array literal.")) {
+        *error = 1;
+    }
+
+    if (*error != 0) {
+        for (size_t i = 0; i < value_count; ++i) {
+            value_free(&values[i]);
+        }
+        free(values);
+        return value_create_null();
+    }
+
+    if (value_count == 0) {
+        ArrayValue *array = array_value_create_dynamic_from_values(VALUE_NULL, NULL, 0);
+        result = value_create_array(array);
+        free(values);
+        return result;
+    }
+
+    ArrayValue *array = array_value_create_dynamic_from_values(element_type, values, value_count);
+    for (size_t i = 0; i < value_count; ++i) {
+        value_free(&values[i]);
+    }
+    free(values);
+    result = value_create_array(array);
+    return result;
+}
+
 Parser parser_create(Token *tokens, size_t count)
 {
     Parser parser;
@@ -157,6 +273,10 @@ static void variable_declaration_single_init(VariableDeclarationSingle *single)
     single->is_input_expression = 0;
     single->input_prompt = NULL;
     single->input_target = NULL;
+    single->expression_text = NULL;
+    single->has_expression = 0;
+    single->has_assignment_operator = 0;
+    single->assignment_operator = OPERATOR_NONE;
     array_access_init(&single->array_access);
 }
 
@@ -170,8 +290,13 @@ static void variable_declaration_single_free(VariableDeclarationSingle *single)
     value_free(&single->value);
     free(single->input_prompt);
     free(single->input_target);
+    free(single->expression_text);
     single->input_prompt = NULL;
     single->input_target = NULL;
+    single->expression_text = NULL;
+    single->has_expression = 0;
+    single->has_assignment_operator = 0;
+    single->assignment_operator = OPERATOR_NONE;
     array_access_free(&single->array_access);
 }
 
@@ -209,6 +334,73 @@ static int parse_single_declaration(Parser *parser, VariableDeclarationSingle *s
         return 1;
     }
 
+    if (token->type == TOKEN_PLUS_EQUAL || token->type == TOKEN_MINUS_EQUAL || token->type == TOKEN_STAR_EQUAL ||
+        token->type == TOKEN_SLASH_EQUAL || token->type == TOKEN_PERCENT_EQUAL || token->type == TOKEN_AMPERSAND_EQUAL ||
+        token->type == TOKEN_PIPE_EQUAL || token->type == TOKEN_CARET_EQUAL || token->type == TOKEN_SHIFT_LEFT_EQUAL ||
+        token->type == TOKEN_SHIFT_RIGHT_EQUAL || token->type == TOKEN_PLUS_PLUS || token->type == TOKEN_MINUS_MINUS) {
+        single->is_assignment = 1;
+        single->has_assignment_operator = 1;
+        if (token->type == TOKEN_PLUS_EQUAL) {
+            single->assignment_operator = OPERATOR_ADD_ASSIGN;
+        } else if (token->type == TOKEN_MINUS_EQUAL) {
+            single->assignment_operator = OPERATOR_SUBTRACT_ASSIGN;
+        } else if (token->type == TOKEN_STAR_EQUAL) {
+            single->assignment_operator = OPERATOR_MULTIPLY_ASSIGN;
+        } else if (token->type == TOKEN_SLASH_EQUAL) {
+            single->assignment_operator = OPERATOR_DIVIDE_ASSIGN;
+        } else if (token->type == TOKEN_PERCENT_EQUAL) {
+            single->assignment_operator = OPERATOR_MODULO_ASSIGN;
+        } else if (token->type == TOKEN_AMPERSAND_EQUAL) {
+            single->assignment_operator = OPERATOR_AND_ASSIGN;
+        } else if (token->type == TOKEN_PIPE_EQUAL) {
+            single->assignment_operator = OPERATOR_OR_ASSIGN;
+        } else if (token->type == TOKEN_CARET_EQUAL) {
+            single->assignment_operator = OPERATOR_XOR_ASSIGN;
+        } else if (token->type == TOKEN_SHIFT_LEFT_EQUAL) {
+            single->assignment_operator = OPERATOR_SHIFT_LEFT_ASSIGN;
+        } else if (token->type == TOKEN_SHIFT_RIGHT_EQUAL) {
+            single->assignment_operator = OPERATOR_SHIFT_RIGHT_ASSIGN;
+        } else if (token->type == TOKEN_PLUS_PLUS) {
+            single->assignment_operator = OPERATOR_INCREMENT;
+        } else if (token->type == TOKEN_MINUS_MINUS) {
+            single->assignment_operator = OPERATOR_DECREMENT;
+        }
+
+        parser_advance(parser);
+        if (token->type == TOKEN_PLUS_PLUS || token->type == TOKEN_MINUS_MINUS) {
+            single->value = value_create_null();
+            return 1;
+        }
+
+        size_t length = 0;
+        Token *current = parser_peek(parser);
+        while (current != NULL && !is_statement_terminator(current) && current->type != TOKEN_COMMA && current->type != TOKEN_EOF) {
+            length += strlen(current->value ? current->value : "") + 1U;
+            current = &parser->tokens[parser->index + (size_t)(current - &parser->tokens[parser->index]) + 1U];
+        }
+
+        single->has_expression = 1;
+        single->expression_text = (char *)malloc(length + 1U);
+        if (single->expression_text == NULL) {
+            fprintf(stderr, "Error: out of memory while reading compound assignment expression.\n");
+            return 0;
+        }
+        single->expression_text[0] = '\0';
+
+        while (parser->index < parser->count && !is_statement_terminator(&parser->tokens[parser->index]) && parser->tokens[parser->index].type != TOKEN_COMMA && parser->tokens[parser->index].type != TOKEN_EOF) {
+            Token *tok = &parser->tokens[parser->index];
+            if (single->expression_text[0] != '\0') {
+                strcat(single->expression_text, " ");
+            }
+            if (tok->value != NULL) {
+                strcat(single->expression_text, tok->value);
+            }
+            parser_advance(parser);
+        }
+        single->value = value_create_null();
+        return 1;
+    }
+
     if (is_array_element_assignment(parser, parser->index - 1U)) {
         single->is_declaration = 0;
         single->is_assignment = 1;
@@ -235,6 +427,17 @@ static int parse_single_declaration(Parser *parser, VariableDeclarationSingle *s
     }
 
     if (token->type == TOKEN_LEFT_BRACKET) {
+        if (parser->index + 1 < parser->count && parser->tokens[parser->index + 1].type != TOKEN_INTEGER &&
+            parser->tokens[parser->index + 1].type != TOKEN_RIGHT_BRACKET) {
+            int parse_error = 0;
+            single->value = parse_array_literal_value(parser, &parse_error);
+            if (parse_error) {
+                return 0;
+            }
+            single->is_assignment = 1;
+            return 1;
+        }
+
         int parse_error = 0;
         single->is_array_declared = 1;
         single->value = parse_array_declaration(parser, &parse_error);
@@ -308,7 +511,45 @@ static int parse_single_declaration(Parser *parser, VariableDeclarationSingle *s
                     input_statement.as.input_statement.items[i].target_name = NULL;
                 }
             }
-        } else if (token->type == TOKEN_IDENTIFIER) {
+        } else if (token->type == TOKEN_LEFT_BRACKET) {
+            int array_literal_error = 0;
+            single->value = parse_array_literal_value(parser, &array_literal_error);
+            if (array_literal_error) {
+                return 0;
+            }
+            single->is_assignment = 1;
+            return 1;
+        } else {
+            size_t start_index = parser->index;
+            size_t length = 0;
+            Token *current = parser_peek(parser);
+            while (current != NULL && !is_statement_terminator(current) && current->type != TOKEN_COMMA && current->type != TOKEN_EOF) {
+                length += strlen(current->value ? current->value : "") + 1U;
+                current = &parser->tokens[parser->index + (size_t)(current - &parser->tokens[start_index]) + 1U];
+            }
+
+            single->has_expression = 1;
+            single->expression_text = (char *)malloc(length + 1U);
+            if (single->expression_text == NULL) {
+                fprintf(stderr, "Error: out of memory while reading expression.\n");
+                return 0;
+            }
+            single->expression_text[0] = '\0';
+
+            while (parser->index < parser->count && !is_statement_terminator(&parser->tokens[parser->index]) && parser->tokens[parser->index].type != TOKEN_COMMA && parser->tokens[parser->index].type != TOKEN_EOF) {
+                Token *tok = &parser->tokens[parser->index];
+                if (single->expression_text[0] != '\0') {
+                    strcat(single->expression_text, " ");
+                }
+                if (tok->value != NULL) {
+                    strcat(single->expression_text, tok->value);
+                }
+                parser_advance(parser);
+            }
+            single->value = value_create_null();
+        }
+
+        if (token->type == TOKEN_IDENTIFIER) {
             Token *next_token = NULL;
             if (parser->index + 1 < parser->count) {
                 next_token = &parser->tokens[parser->index + 1];
@@ -627,6 +868,8 @@ Statement parser_parse(Parser *parser)
         if (token->type == TOKEN_STRING) {
             print_statement.is_variable_reference = 0;
             print_statement.has_array_access = 0;
+            print_statement.has_expression = 0;
+            print_statement.expression_text = NULL;
             array_access_init(&print_statement.array_access);
 
             if (token->value != NULL && token->value[0] == '\'' && token->value[strlen(token->value) - 1] == '\'') {
@@ -718,7 +961,9 @@ Statement parser_parse(Parser *parser)
         return statement;
     }
 
-    if (token->type == TOKEN_IDENTIFIER && parser->index + 1 < parser->count && parser->tokens[parser->index + 1].type == TOKEN_EQUAL) {
+    if (token->type == TOKEN_IDENTIFIER && parser->index + 1 < parser->count &&
+        (parser->tokens[parser->index + 1].type == TOKEN_EQUAL ||
+         is_assignment_operator_token(parser->tokens[parser->index + 1].type))) {
         VariableDeclarationSingle single;
         variable_declaration_single_init(&single);
         if (!parse_single_declaration(parser, &single, 0)) {

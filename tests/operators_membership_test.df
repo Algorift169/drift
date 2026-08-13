@@ -1,0 +1,26 @@
+// Membership operator: in
+var arr = [1, 2, 3, 4, 5]
+say 3 in arr
+say 10 in arr
+say 1 in arr
+
+// String membership
+var text = "hello world"
+say "hello" in text
+say "world" in text
+say "xyz" in text
+
+// Array of strings
+var fruits = ["apple", "banana", "cherry"]
+say "apple" in fruits
+say "orange" in fruits
+say "cherry" in fruits
+
+// Membership with variables
+var num = 2
+var nums = [1, 2, 3, 4]
+say num in nums
+
+var substr = "ello"
+var str = "hello"
+say substr in str

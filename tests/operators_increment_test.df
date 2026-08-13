@@ -1,0 +1,35 @@
+// Increment and decrement operators: ++ --
+var x = 5
+say x
+
+x++
+say x
+
+var y = 10
+y--
+say y
+
+// Pre and post increment (tested with expressions)
+var a = 5
+var b = a + 1
+say a
+say b
+
+// Multiple increments
+var c = 0
+c++
+c++
+c++
+say c
+
+// Multiple decrements
+var d = 10
+d--
+d--
+say d
+
+// With assignment
+var e = 5
+e++
+var f = e
+say f

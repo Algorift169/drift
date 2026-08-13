@@ -313,8 +313,158 @@ Token *lexer_scan_all(Lexer *lexer, size_t *token_count)
         }
 
         if (lexer->source[lexer->index] == '=') {
-            tokens[count++] = make_token(TOKEN_EQUAL, drift_duplicate_string("="));
+            if (lexer->index + 1 < lexer->length && lexer->source[lexer->index + 1] == '=') {
+                tokens[count++] = make_token(TOKEN_EQUAL_EQUAL, drift_duplicate_string("=="));
+                lexer->index += 2;
+            } else {
+                tokens[count++] = make_token(TOKEN_EQUAL, drift_duplicate_string("="));
+                lexer->index++;
+            }
+        } else if (lexer->source[lexer->index] == '+') {
+            if (lexer->index + 1 < lexer->length && lexer->source[lexer->index + 1] == '+') {
+                tokens[count++] = make_token(TOKEN_PLUS_PLUS, drift_duplicate_string("++"));
+                lexer->index += 2;
+            } else if (lexer->index + 1 < lexer->length && lexer->source[lexer->index + 1] == '=') {
+                tokens[count++] = make_token(TOKEN_PLUS_EQUAL, drift_duplicate_string("+="));
+                lexer->index += 2;
+            } else {
+                tokens[count++] = make_token(TOKEN_PLUS, drift_duplicate_string("+"));
+                lexer->index++;
+            }
+        } else if (lexer->source[lexer->index] == '-') {
+            if (lexer->index + 1 < lexer->length && lexer->source[lexer->index + 1] == '-') {
+                tokens[count++] = make_token(TOKEN_MINUS_MINUS, drift_duplicate_string("--"));
+                lexer->index += 2;
+            } else if (lexer->index + 1 < lexer->length && lexer->source[lexer->index + 1] == '=') {
+                tokens[count++] = make_token(TOKEN_MINUS_EQUAL, drift_duplicate_string("-="));
+                lexer->index += 2;
+            } else if (is_identifier_start(lexer->source[lexer->index])) {
+                Token token = read_identifier(lexer);
+                if (token.type == TOKEN_UNKNOWN) {
+                    fprintf(stderr, "Syntax Error: Invalid identifier\n");
+                    token_free_array(tokens, count);
+                    return NULL;
+                }
+                tokens[count++] = token;
+            } else {
+                tokens[count++] = make_token(TOKEN_MINUS, drift_duplicate_string("-"));
+                lexer->index++;
+            }
+        } else if (lexer->source[lexer->index] == '*') {
+            if (lexer->index + 1 < lexer->length && lexer->source[lexer->index + 1] == '=') {
+                tokens[count++] = make_token(TOKEN_STAR_EQUAL, drift_duplicate_string("*="));
+                lexer->index += 2;
+            } else {
+                tokens[count++] = make_token(TOKEN_STAR, drift_duplicate_string("*"));
+                lexer->index++;
+            }
+        } else if (lexer->source[lexer->index] == '/') {
+            if (lexer->index + 1 < lexer->length && lexer->source[lexer->index + 1] == '=') {
+                tokens[count++] = make_token(TOKEN_SLASH_EQUAL, drift_duplicate_string("/="));
+                lexer->index += 2;
+            } else {
+                tokens[count++] = make_token(TOKEN_SLASH, drift_duplicate_string("/"));
+                lexer->index++;
+            }
+        } else if (lexer->source[lexer->index] == '%') {
+            if (lexer->index + 1 < lexer->length && lexer->source[lexer->index + 1] == '=') {
+                tokens[count++] = make_token(TOKEN_PERCENT_EQUAL, drift_duplicate_string("%="));
+                lexer->index += 2;
+            } else {
+                tokens[count++] = make_token(TOKEN_PERCENT, drift_duplicate_string("%"));
+                lexer->index++;
+            }
+        } else if (lexer->source[lexer->index] == '!') {
+            if (lexer->index + 1 < lexer->length && lexer->source[lexer->index + 1] == '=') {
+                tokens[count++] = make_token(TOKEN_NOT_EQUAL, drift_duplicate_string("!="));
+                lexer->index += 2;
+            } else {
+                tokens[count++] = make_token(TOKEN_BANG, drift_duplicate_string("!"));
+                lexer->index++;
+            }
+        } else if (lexer->source[lexer->index] == '<') {
+            if (lexer->index + 1 < lexer->length && lexer->source[lexer->index + 1] == '=') {
+                if (lexer->index + 2 < lexer->length && lexer->source[lexer->index + 2] == '=') {
+                    tokens[count++] = make_token(TOKEN_SHIFT_LEFT_EQUAL, drift_duplicate_string("<<="));
+                    lexer->index += 3;
+                } else {
+                    tokens[count++] = make_token(TOKEN_LESS_EQUAL, drift_duplicate_string("<="));
+                    lexer->index += 2;
+                }
+            } else if (lexer->index + 1 < lexer->length && lexer->source[lexer->index + 1] == '<') {
+                if (lexer->index + 2 < lexer->length && lexer->source[lexer->index + 2] == '=') {
+                    tokens[count++] = make_token(TOKEN_SHIFT_LEFT_EQUAL, drift_duplicate_string("<<="));
+                    lexer->index += 3;
+                } else {
+                    tokens[count++] = make_token(TOKEN_SHIFT_LEFT, drift_duplicate_string("<<"));
+                    lexer->index += 2;
+                }
+            } else {
+                tokens[count++] = make_token(TOKEN_LESS, drift_duplicate_string("<"));
+                lexer->index++;
+            }
+        } else if (lexer->source[lexer->index] == '>') {
+            if (lexer->index + 1 < lexer->length && lexer->source[lexer->index + 1] == '=') {
+                if (lexer->index + 2 < lexer->length && lexer->source[lexer->index + 2] == '=') {
+                    tokens[count++] = make_token(TOKEN_SHIFT_RIGHT_EQUAL, drift_duplicate_string(">>="));
+                    lexer->index += 3;
+                } else {
+                    tokens[count++] = make_token(TOKEN_GREATER_EQUAL, drift_duplicate_string(">="));
+                    lexer->index += 2;
+                }
+            } else if (lexer->index + 1 < lexer->length && lexer->source[lexer->index + 1] == '>') {
+                if (lexer->index + 2 < lexer->length && lexer->source[lexer->index + 2] == '=') {
+                    tokens[count++] = make_token(TOKEN_SHIFT_RIGHT_EQUAL, drift_duplicate_string(">>="));
+                    lexer->index += 3;
+                } else {
+                    tokens[count++] = make_token(TOKEN_SHIFT_RIGHT, drift_duplicate_string(">>"));
+                    lexer->index += 2;
+                }
+            } else {
+                tokens[count++] = make_token(TOKEN_GREATER, drift_duplicate_string(">"));
+                lexer->index++;
+            }
+        } else if (lexer->source[lexer->index] == '&') {
+            if (lexer->index + 1 < lexer->length && lexer->source[lexer->index + 1] == '&') {
+                tokens[count++] = make_token(TOKEN_AND_AND, drift_duplicate_string("&&"));
+                lexer->index += 2;
+            } else if (lexer->index + 1 < lexer->length && lexer->source[lexer->index + 1] == '=') {
+                tokens[count++] = make_token(TOKEN_AMPERSAND_EQUAL, drift_duplicate_string("&="));
+                lexer->index += 2;
+            } else {
+                tokens[count++] = make_token(TOKEN_AMPERSAND, drift_duplicate_string("&"));
+                lexer->index++;
+            }
+        } else if (lexer->source[lexer->index] == '|') {
+            if (lexer->index + 1 < lexer->length && lexer->source[lexer->index + 1] == '|') {
+                tokens[count++] = make_token(TOKEN_OR_OR, drift_duplicate_string("||"));
+                lexer->index += 2;
+            } else if (lexer->index + 1 < lexer->length && lexer->source[lexer->index + 1] == '=') {
+                tokens[count++] = make_token(TOKEN_PIPE_EQUAL, drift_duplicate_string("|="));
+                lexer->index += 2;
+            } else {
+                tokens[count++] = make_token(TOKEN_PIPE, drift_duplicate_string("|"));
+                lexer->index++;
+            }
+        } else if (lexer->source[lexer->index] == '^') {
+            if (lexer->index + 1 < lexer->length && lexer->source[lexer->index + 1] == '=') {
+                tokens[count++] = make_token(TOKEN_CARET_EQUAL, drift_duplicate_string("^="));
+                lexer->index += 2;
+            } else {
+                tokens[count++] = make_token(TOKEN_CARET, drift_duplicate_string("^"));
+                lexer->index++;
+            }
+        } else if (lexer->source[lexer->index] == '~') {
+            tokens[count++] = make_token(TOKEN_TILDA, drift_duplicate_string("~"));
             lexer->index++;
+        } else if (lexer->source[lexer->index] == '.') {
+            if (lexer->index + 2 < lexer->length && lexer->source[lexer->index + 1] == '.' && lexer->source[lexer->index + 2] == '.') {
+                tokens[count++] = make_token(TOKEN_RANGE, drift_duplicate_string("..."));
+                lexer->index += 3;
+            } else {
+                tokens[count++] = make_token(TOKEN_DOT, drift_duplicate_string("."));
+                lexer->index++;
+            }
         } else if (lexer->source[lexer->index] == '@') {
             tokens[count++] = make_token(TOKEN_AT, drift_duplicate_string("@"));
             lexer->index++;
@@ -341,9 +491,6 @@ Token *lexer_scan_all(Lexer *lexer, size_t *token_count)
             lexer->index++;
         } else if (lexer->source[lexer->index] == ';') {
             tokens[count++] = make_token(TOKEN_SEMICOLON, drift_duplicate_string(";"));
-            lexer->index++;
-        } else if (lexer->source[lexer->index] == '.') {
-            tokens[count++] = make_token(TOKEN_DOT, drift_duplicate_string("."));
             lexer->index++;
         } else if (lexer->source[lexer->index] == '\'') {
             Token token = read_single_quoted_value(lexer);

@@ -1,0 +1,22 @@
+// Range operator: ...
+var range1 = 1 ... 5
+say range1
+
+var range2 = 0 ... 3
+say range2
+
+// Reverse range
+var range3 = 5 ... 1
+say range3
+
+// Single value range
+var range4 = 10 ... 10
+say range4
+
+// Use range in array operations
+var numbers = 1 ... 10
+say numbers
+
+// Negative ranges
+var neg_range = -5 ... -1
+say neg_range

@@ -162,6 +162,351 @@ static int parse_array_template_expression(const char *expr, ArrayAccess *access
     return 1;
 }
 
+static int value_is_truthy(const Value *value)
+{
+    if (value == NULL) {
+        return 0;
+    }
+
+    if (value->type == VALUE_BOOLEAN) {
+        return value->boolean_value;
+    }
+    if (value->type == VALUE_INTEGER) {
+        return value->integer_value != 0;
+    }
+    if (value->type == VALUE_FLOAT) {
+        return value->float_value != 0.0;
+    }
+    if (value->type == VALUE_STRING) {
+        return value->string_value != NULL && value->string_value[0] != '\0';
+    }
+    if (value->type == VALUE_NULL) {
+        return 0;
+    }
+    if (value->type == VALUE_INFINITY) {
+        return 1;
+    }
+    if (value->type == VALUE_ARRAY) {
+        return value->array_value != NULL && value->array_value->length > 0;
+    }
+    return 0;
+}
+
+static Value resolve_identifier_or_literal(Environment *environment, Token *token, int *ok)
+{
+    Value value = value_create_null();
+    if (token == NULL || ok == NULL) {
+        *ok = 0;
+        return value;
+    }
+
+    *ok = 1;
+    if (token->type == TOKEN_INTEGER) {
+        char *end = NULL;
+        long v = strtol(token->value, &end, 10);
+        (void)end;
+        return value_create_integer(v);
+    }
+    if (token->type == TOKEN_FLOAT) {
+        char *end = NULL;
+        double v = strtod(token->value, &end);
+        (void)end;
+        return value_create_float(v);
+    }
+    if (token->type == TOKEN_STRING) {
+        return value_create_string(token->value);
+    }
+    if (token->type == TOKEN_TRUE) {
+        return value_create_boolean(1);
+    }
+    if (token->type == TOKEN_FALSE) {
+        return value_create_boolean(0);
+    }
+    if (token->type == TOKEN_NULL) {
+        return value_create_null();
+    }
+    if (token->type == TOKEN_INFINITY) {
+        return value_create_infinity();
+    }
+    if (token->type == TOKEN_IDENTIFIER) {
+        if (!environment_get(environment, token->value, &value)) {
+            fprintf(stderr, "Runtime Error: Undefined variable '%s'.\n", token->value);
+            *ok = 0;
+            return value_create_null();
+        }
+        return value;
+    }
+
+    *ok = 0;
+    return value_create_null();
+}
+
+static int token_precedence(TokenType type)
+{
+    switch (type) {
+        case TOKEN_RANGE:
+            return 1;
+        case TOKEN_OR_OR:
+            return 2;
+        case TOKEN_AND_AND:
+            return 3;
+        case TOKEN_PIPE:
+            return 4;
+        case TOKEN_CARET:
+            return 5;
+        case TOKEN_AMPERSAND:
+            return 6;
+        case TOKEN_EQUAL_EQUAL:
+        case TOKEN_NOT_EQUAL:
+            return 7;
+        case TOKEN_GREATER:
+        case TOKEN_LESS:
+        case TOKEN_GREATER_EQUAL:
+        case TOKEN_LESS_EQUAL:
+            return 8;
+        case TOKEN_SHIFT_LEFT:
+        case TOKEN_SHIFT_RIGHT:
+            return 9;
+        case TOKEN_PLUS:
+        case TOKEN_MINUS:
+            return 10;
+        case TOKEN_STAR:
+        case TOKEN_SLASH:
+        case TOKEN_PERCENT:
+            return 11;
+        case TOKEN_IN:
+            return 12;
+        default:
+            return -1;
+    }
+}
+
+static Value apply_unary_operator(TokenType type, const Value *value)
+{
+    Value result = value_create_null();
+    if (value == NULL) {
+        return result;
+    }
+
+    if (type == TOKEN_MINUS) {
+        if (value->type == VALUE_INTEGER) {
+            return value_create_integer(-value->integer_value);
+        }
+        if (value->type == VALUE_FLOAT) {
+            return value_create_float(-value->float_value);
+        }
+        return value_create_null();
+    }
+    if (type == TOKEN_BANG) {
+        return value_create_boolean(!value_is_truthy(value));
+    }
+    if (type == TOKEN_TILDA) {
+        if (value->type == VALUE_INTEGER) {
+            return value_create_integer(~value->integer_value);
+        }
+        return value_create_null();
+    }
+    if (type == TOKEN_PLUS) {
+        return value_copy(value);
+    }
+    return result;
+}
+
+static Value evaluate_expression_tokens(Environment *environment, Token *tokens, size_t count, size_t *index, int min_precedence, int *ok)
+{
+    Value left = value_create_null();
+    TokenType unary_type = TOKEN_UNKNOWN;
+    Token *token = NULL;
+
+    if (tokens == NULL || index == NULL || ok == NULL) {
+        *ok = 0;
+        return left;
+    }
+
+    if (*index >= count) {
+        *ok = 0;
+        return left;
+    }
+
+    token = &tokens[*index];
+    if (token->type == TOKEN_PLUS || token->type == TOKEN_MINUS || token->type == TOKEN_BANG || token->type == TOKEN_TILDA) {
+        unary_type = token->type;
+        (*index)++;
+    }
+
+    if (*index >= count) {
+        *ok = 0;
+        return left;
+    }
+
+    token = &tokens[*index];
+    if (token->type == TOKEN_LEFT_PAREN) {
+        (*index)++;
+        left = evaluate_expression_tokens(environment, tokens, count, index, 0, ok);
+        if (!*ok || (*index >= count) || tokens[*index].type != TOKEN_RIGHT_PAREN) {
+            *ok = 0;
+            return left;
+        }
+        (*index)++;
+    } else if (token->type == TOKEN_IDENTIFIER || token->type == TOKEN_INTEGER || token->type == TOKEN_FLOAT ||
+               token->type == TOKEN_STRING || token->type == TOKEN_TRUE || token->type == TOKEN_FALSE ||
+               token->type == TOKEN_NULL || token->type == TOKEN_INFINITY) {
+        left = resolve_identifier_or_literal(environment, token, ok);
+        (*index)++;
+        while (*index < count && tokens[*index].type == TOKEN_LEFT_BRACKET) {
+            size_t bracket_index = *index;
+            Value index_value;
+            Value array_value;
+            long arr_index = 0;
+            (*index)++;
+            index_value = evaluate_expression_tokens(environment, tokens, count, index, 0, ok);
+            if (!*ok) {
+                return left;
+            }
+            if (index_value.type != VALUE_INTEGER) {
+                fprintf(stderr, "Runtime Error: Array index must be an integer.\n");
+                *ok = 0;
+                return left;
+            }
+            arr_index = index_value.integer_value;
+            value_free(&index_value);
+            if (*index >= count || tokens[*index].type != TOKEN_RIGHT_BRACKET) {
+                fprintf(stderr, "Runtime Error: Expected ']' after array index.\n");
+                *ok = 0;
+                return left;
+            }
+            (*index)++;
+            if (left.type != VALUE_ARRAY) {
+                fprintf(stderr, "Runtime Error: Only array values can be indexed.\n");
+                *ok = 0;
+                return left;
+            }
+            if (!environment_get(environment, left.string_value ? left.string_value : "", &array_value)) {
+                fprintf(stderr, "Runtime Error: Invalid array access.\n");
+                *ok = 0;
+                return left;
+            }
+            if (array_value.type == VALUE_ARRAY && array_value.array_value != NULL && arr_index >= 0 && (size_t)arr_index < array_value.array_value->length) {
+                left = value_copy(&array_value.array_value->elements[arr_index]);
+            } else {
+                fprintf(stderr, "Runtime Error: Array index out of bounds.\n");
+                *ok = 0;
+                value_free(&array_value);
+                return left;
+            }
+            value_free(&array_value);
+            (void)bracket_index;
+        }
+    } else {
+        *ok = 0;
+        return left;
+    }
+
+    if (unary_type != TOKEN_UNKNOWN) {
+        left = apply_unary_operator(unary_type, &left);
+    }
+
+    while (*index < count) {
+        TokenType op = tokens[*index].type;
+        int precedence = token_precedence(op);
+        if (precedence < min_precedence) {
+            break;
+        }
+
+        (*index)++;
+        if (*index >= count) {
+            *ok = 0;
+            return left;
+        }
+
+        Value right = evaluate_expression_tokens(environment, tokens, count, index, precedence + 1, ok);
+        if (!*ok) {
+            return left;
+        }
+
+        if (op == TOKEN_IN) {
+            left = operator_apply(OPERATOR_IN, &left, &right);
+        } else if (op == TOKEN_RANGE) {
+            left = operator_apply(OPERATOR_RANGE, &left, &right);
+        } else if (op == TOKEN_PLUS) {
+            left = operator_apply(OPERATOR_ADD, &left, &right);
+        } else if (op == TOKEN_MINUS) {
+            left = operator_apply(OPERATOR_SUBTRACT, &left, &right);
+        } else if (op == TOKEN_STAR) {
+            left = operator_apply(OPERATOR_MULTIPLY, &left, &right);
+        } else if (op == TOKEN_SLASH) {
+            left = operator_apply(OPERATOR_DIVIDE, &left, &right);
+        } else if (op == TOKEN_PERCENT) {
+            left = operator_apply(OPERATOR_MODULO, &left, &right);
+        } else if (op == TOKEN_EQUAL_EQUAL) {
+            left = operator_apply(OPERATOR_EQUAL_EQUAL, &left, &right);
+        } else if (op == TOKEN_NOT_EQUAL) {
+            left = operator_apply(OPERATOR_NOT_EQUAL, &left, &right);
+        } else if (op == TOKEN_GREATER) {
+            left = operator_apply(OPERATOR_GREATER, &left, &right);
+        } else if (op == TOKEN_LESS) {
+            left = operator_apply(OPERATOR_LESS, &left, &right);
+        } else if (op == TOKEN_GREATER_EQUAL) {
+            left = operator_apply(OPERATOR_GREATER_EQUAL, &left, &right);
+        } else if (op == TOKEN_LESS_EQUAL) {
+            left = operator_apply(OPERATOR_LESS_EQUAL, &left, &right);
+        } else if (op == TOKEN_AND_AND) {
+            left = operator_apply(OPERATOR_AND_AND, &left, &right);
+        } else if (op == TOKEN_OR_OR) {
+            left = operator_apply(OPERATOR_OR_OR, &left, &right);
+        } else if (op == TOKEN_AMPERSAND) {
+            left = operator_apply(OPERATOR_BITWISE_AND, &left, &right);
+        } else if (op == TOKEN_PIPE) {
+            left = operator_apply(OPERATOR_BITWISE_OR, &left, &right);
+        } else if (op == TOKEN_CARET) {
+            left = operator_apply(OPERATOR_BITWISE_XOR, &left, &right);
+        } else if (op == TOKEN_SHIFT_LEFT) {
+            left = operator_apply(OPERATOR_SHIFT_LEFT, &left, &right);
+        } else if (op == TOKEN_SHIFT_RIGHT) {
+            left = operator_apply(OPERATOR_SHIFT_RIGHT, &left, &right);
+        } else {
+            *ok = 0;
+            return left;
+        }
+
+        value_free(&right);
+    }
+
+    return left;
+}
+
+static Value evaluate_expression_text(Environment *environment, const char *expression, int *ok)
+{
+    Lexer lexer;
+    Token *tokens = NULL;
+    size_t token_count = 0;
+    Value result = value_create_null();
+    size_t index = 0;
+
+    if (expression == NULL || ok == NULL) {
+        if (ok != NULL) {
+            *ok = 0;
+        }
+        return result;
+    }
+
+    lexer = lexer_create(expression);
+    tokens = lexer_scan_all(&lexer, &token_count);
+    if (tokens == NULL) {
+        *ok = 0;
+        return result;
+    }
+
+    *ok = 1;
+    result = evaluate_expression_tokens(environment, tokens, token_count, &index, 0, ok);
+    if (*ok && index < token_count && tokens[index].type != TOKEN_EOF) {
+        *ok = 0;
+    }
+
+    token_free_array(tokens, token_count);
+    return result;
+}
+
 static void print_value(const Value *value)
 {
     if (value == NULL) {
@@ -714,6 +1059,59 @@ int interpreter_execute(Statement statement, Environment *environment)
                 }
 
                 free(resolved_prompt);
+            } else if (single->has_expression) {
+                int expr_ok = 0;
+                Value expr_value = evaluate_expression_text(environment, single->expression_text, &expr_ok);
+                if (!expr_ok) {
+                    fprintf(stderr, "Runtime Error: Failed to evaluate expression '%s'.\n", single->expression_text ? single->expression_text : "");
+                    return 1;
+                }
+                value = expr_value;
+            } else if (single->is_assignment && single->has_assignment_operator) {
+                Value current_value = value_create_null();
+                if (!environment_get(environment, single->name, &current_value)) {
+                    fprintf(stderr, "Runtime Error: Undefined variable '%s'.\n", single->name);
+                    return 1;
+                }
+
+                int expr_ok = 0;
+                Value rhs = evaluate_expression_text(environment, single->expression_text, &expr_ok);
+                if (!expr_ok) {
+                    value_free(&current_value);
+                    fprintf(stderr, "Runtime Error: Failed to evaluate assignment expression '%s'.\n", single->expression_text ? single->expression_text : "");
+                    return 1;
+                }
+
+                if (single->assignment_operator == OPERATOR_ADD_ASSIGN) {
+                    value = operator_apply(OPERATOR_ADD, &current_value, &rhs);
+                } else if (single->assignment_operator == OPERATOR_SUBTRACT_ASSIGN) {
+                    value = operator_apply(OPERATOR_SUBTRACT, &current_value, &rhs);
+                } else if (single->assignment_operator == OPERATOR_MULTIPLY_ASSIGN) {
+                    value = operator_apply(OPERATOR_MULTIPLY, &current_value, &rhs);
+                } else if (single->assignment_operator == OPERATOR_DIVIDE_ASSIGN) {
+                    value = operator_apply(OPERATOR_DIVIDE, &current_value, &rhs);
+                } else if (single->assignment_operator == OPERATOR_MODULO_ASSIGN) {
+                    value = operator_apply(OPERATOR_MODULO, &current_value, &rhs);
+                } else if (single->assignment_operator == OPERATOR_AND_ASSIGN) {
+                    value = operator_apply(OPERATOR_BITWISE_AND, &current_value, &rhs);
+                } else if (single->assignment_operator == OPERATOR_OR_ASSIGN) {
+                    value = operator_apply(OPERATOR_BITWISE_OR, &current_value, &rhs);
+                } else if (single->assignment_operator == OPERATOR_XOR_ASSIGN) {
+                    value = operator_apply(OPERATOR_BITWISE_XOR, &current_value, &rhs);
+                } else if (single->assignment_operator == OPERATOR_SHIFT_LEFT_ASSIGN) {
+                    value = operator_apply(OPERATOR_SHIFT_LEFT, &current_value, &rhs);
+                } else if (single->assignment_operator == OPERATOR_SHIFT_RIGHT_ASSIGN) {
+                    value = operator_apply(OPERATOR_SHIFT_RIGHT, &current_value, &rhs);
+                } else if (single->assignment_operator == OPERATOR_INCREMENT) {
+                    value = operator_apply(OPERATOR_INCREMENT, &current_value, NULL);
+                } else if (single->assignment_operator == OPERATOR_DECREMENT) {
+                    value = operator_apply(OPERATOR_DECREMENT, &current_value, NULL);
+                } else {
+                    value = rhs;
+                }
+
+                value_free(&current_value);
+                value_free(&rhs);
             } else if (single->is_assignment && single->is_array_expression) {
                 Value source;
                 if (!environment_get(environment, single->array_access.name, &source)) {

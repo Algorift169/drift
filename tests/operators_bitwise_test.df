@@ -1,0 +1,15 @@
+// Bitwise operators: & | ^ ~ << >>
+var a = 5 & 3
+say a
+
+var b = 5 | 3
+say b
+
+var c = 5 ^ 3
+say c
+
+var d = 8 << 1
+say d
+
+var e = 16 >> 1
+say e

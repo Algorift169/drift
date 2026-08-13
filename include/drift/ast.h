@@ -3,6 +3,7 @@
 
 #include "drift/value.h"
 #include "drift/array.h"
+#include "drift/operator.h"
 
 typedef struct {
     char *name;
@@ -15,6 +16,10 @@ typedef struct {
     int is_input_expression;
     char *input_prompt;
     char *input_target;
+    char *expression_text;
+    int has_expression;
+    int has_assignment_operator;
+    OperatorType assignment_operator;
     ArrayAccess array_access;
 } VariableDeclarationSingle;
 
@@ -27,6 +32,8 @@ typedef struct {
     char *value;
     int is_variable_reference;
     int has_array_access;
+    char *expression_text;
+    int has_expression;
     ArrayAccess array_access;
 } PrintStatement;
 

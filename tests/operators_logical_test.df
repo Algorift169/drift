@@ -1,0 +1,15 @@
+// Logical operators: && || !
+var a = true && true
+say a
+
+var b = true && false
+say b
+
+var c = true || false
+say c
+
+var d = !true
+say d
+
+var e = !false
+say e
