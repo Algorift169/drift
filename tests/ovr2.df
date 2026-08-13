@@ -1,0 +1,426 @@
+/*
+===========================================================
+                 DRIFT ERROR TEST SUITE
+===========================================================
+
+This file intentionally contains INVALID Drift code.
+
+Purpose:
+- Test lexer errors
+- Test parser errors
+- Test variable declaration errors
+- Test array declaration errors
+- Test array indexing errors
+- Test multidimensional array errors
+- Test undefined variable errors
+- Test malformed syntax
+
+IMPORTANT:
+Run each @exc block separately if Drift stops execution
+after the first error.
+*/
+
+
+/*
+===========================================================
+1. VARIABLE ERRORS
+===========================================================
+*/
+
+/*
+@exc
+
+// Missing variable name
+var = 10
+
+.exc
+*/
+
+
+/*
+@exc
+
+// Missing value
+var x =
+
+.exc
+*/
+
+
+/*
+@exc
+
+// Missing '='
+var x 10
+
+.exc
+*/
+
+
+/*
+@exc
+
+// Missing value after comma
+var x = 10, y =
+
+.exc
+*/
+
+
+/*
+@exc
+
+// Missing variable after comma
+var x = 10,
+
+.exc
+*/
+
+
+/*
+@exc
+
+// Double comma
+var x = 10,, y = 20
+
+.exc
+*/
+
+
+/*
+===========================================================
+2. UNDEFINED VARIABLE
+===========================================================
+*/
+
+/*
+@exc
+
+say "{unknown}"
+
+.exc
+*/
+
+
+/*
+===========================================================
+3. ARRAY DECLARATION ERRORS
+===========================================================
+*/
+
+/*
+@exc
+
+// Missing array initializer
+var arr[] =
+
+.exc
+*/
+
+
+/*
+@exc
+
+// Missing closing brace
+var arr[] = {1, 2, 3
+
+.exc
+*/
+
+
+/*
+@exc
+
+// Missing opening brace
+var arr[] = 1, 2, 3}
+
+.exc
+*/
+
+
+/*
+@exc
+
+// Empty element
+var arr[] = {1, 2,}
+
+.exc
+*/
+
+
+/*
+@exc
+
+// Double comma
+var arr[] = {1,, 3}
+
+.exc
+*/
+
+
+/*
+===========================================================
+4. ARRAY INDEX ERRORS
+===========================================================
+*/
+
+/*
+@exc
+
+var arr[] = {10, 20, 30}
+
+say "{arr[3]}"
+
+.exc
+*/
+
+
+/*
+@exc
+
+var arr[] = {10, 20, 30}
+
+say "{arr[100]}"
+
+.exc
+*/
+
+
+/*
+@exc
+
+var arr[] = {10, 20, 30}
+
+say "{arr[-1]}"
+
+.exc
+*/
+
+
+/*
+@exc
+
+var arr[] = {10, 20, 30}
+
+say "{arr[abc]}"
+
+.exc
+*/
+
+
+/*
+@exc
+
+var arr[] = {10, 20, 30}
+
+say "{arr[]"
+
+.exc
+*/
+
+
+/*
+===========================================================
+5. 2D ARRAY ERRORS
+===========================================================
+*/
+
+/*
+@exc
+
+var arr[][] = {1,2}{3,4}
+
+say "{arr[0]}"
+
+.exc
+*/
+
+
+/*
+@exc
+
+var arr[][] = {1,2}{3,4}
+
+say "{arr[0][5]}"
+
+.exc
+*/
+
+
+/*
+@exc
+
+var arr[][] = {1,2}{3,4}
+
+say "{arr[5][0]}"
+
+.exc
+*/
+
+
+/*
+@exc
+
+var arr[][] = {1,2}{3,4}
+
+say "{arr[0][0][0]}"
+
+.exc
+*/
+
+
+/*
+===========================================================
+6. 3D ARRAY ERRORS
+===========================================================
+*/
+
+/*
+@exc
+
+var arr[][][] = {{1,2}{3,4}}{{5,6}{7,8}}
+
+say "{arr[0][0]}"
+
+.exc
+*/
+
+
+/*
+@exc
+
+var arr[][][] = {{1,2}{3,4}}{{5,6}{7,8}}
+
+say "{arr[0][0][5]}"
+
+.exc
+*/
+
+
+/*
+@exc
+
+var arr[][][] = {{1,2}{3,4}}{{5,6}{7,8}}
+
+say "{arr[5][0][0]}"
+
+.exc
+*/
+
+
+/*
+===========================================================
+7. ARRAY DIMENSION / SHAPE ERRORS
+===========================================================
+*/
+
+/*
+@exc
+
+// Rows have different sizes.
+// Decide whether Drift should reject this.
+
+var arr[][] = {1,2}{3}
+
+.exc
+*/
+
+
+/*
+@exc
+
+// Declared 3D but initializer does not have
+// the required 3-dimensional structure.
+
+var arr[][][] = {1,2,3}
+
+.exc
+*/
+
+
+/*
+===========================================================
+8. MALFORMED SAY EXPRESSIONS
+===========================================================
+*/
+
+/*
+@exc
+
+say
+
+.exc
+*/
+
+
+/*
+@exc
+
+say "Hello
+
+.exc
+*/
+
+
+/*
+@exc
+
+say "{unknown"
+
+.exc
+*/
+
+
+/*
+@exc
+
+say "{unknown}"
+
+.exc
+*/
+
+
+/*
+===========================================================
+9. MALFORMED EXECUTABLE COMMENT
+===========================================================
+*/
+
+/*
+@exc
+
+say "This block has no proper terminator."
+
+/*
+*/
+
+
+/*
+===========================================================
+10. COMPLETELY INVALID SYNTAX
+===========================================================
+*/
+
+/*
+@exc
+
+this is definitely not Drift syntax
+
+.exc
+*/
+
+
+/*
+@exc
+
+var @#$ = 10
+
+.exc
+*/
+
+
+/*
+===========================================================
+END OF ERROR TEST SUITE
+===========================================================
+*/

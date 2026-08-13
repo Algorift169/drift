@@ -1,0 +1,67 @@
+/*
+This is a test on drift on the overall updates which is made so far and we are going to test 
+most likely everything built so far.
+
+First we check variable declaration: 
+
+@exc
+var a = 1, b = 2.54656, c = 'A', d = "Israfil", bool = true
+say "Variable test: \n{a}\n{b}\n{c}\n{d}\n{bool}\n"
+say "-------------------------------------------\n"
+.exc
+
+So this will test the variable declaration of almost every type needed. Now 
+we gonna test different arrays:
+
+@exc
+var arr-num[] = {1,2,4.5,7.7,9}
+var arr-chr[] = {'a','b'}
+var arr-str[] = {"Fuck","Israel"}
+var arr-bool[] = {true,false}
+say "{arr-num[]}\n"
+say "{arr-chr[]}\n"
+say "{arr-str[]}\n"
+say "{arr-bool[]}\n"
+say "Checking specific elements: \n"
+say "{arr-num[3]}\n"
+say "{arr-chr[1]}\n"
+say "{arr-str[0]}\n"
+say "{arr-bool[1]}\n"
+.exc
+
+okay now We gonna add different type of 2d and 3d arrays:
+@exc
+var arr-2num[][] = {1,2,4}{2,3,4}
+var arr-2chr[][]= {'a','b'} {'d','c'}
+var arr-2str[][] = {"Fuck","Israel"} {"Also","USA"}
+var arr-2bool[][] = {true,true}{false,false}
+say "Testing all 2d:\n"
+say "{arr-2num[][]}\n"
+say "{arr-2chr[][]}\n"
+say "{arr-2str[][]}\n"
+say "{arr-2bool[][]}\n"
+say "Checking specific elements of 2d arrays: \n"
+say "{arr-2num[0][0]}\n"
+say "{arr-2chr[1][1]}\n"
+say "{arr-2str[0][1]}\n"
+say "{arr-2bool[1][0]}\n"
+.exc
+Testing 3d arrays:
+
+@exc
+var arr-3num[][][] = {{1,2,4}{2,3,4}} {{0,0,0}{1,1,1}}
+var arr-3chr[][][]= {{'a','b'} {'d','c'}} {{'a','b'} {'d','c'}}
+var arr-3str[][][] = {{"Fuck","Israel"} {"Also","USA"}} {{"Fuck","Israel"} {"Also","USA"}}
+var arr-3bool[][][] = {{true,true}{false,false}} {{true,true}{false,false}}
+say "Testing all 3d:\n"
+say "{arr-3num[][][]}\n"
+say "{arr-3chr[][][]}\n"
+say "{arr-3str[][][]}\n"
+say "{arr-3bool[][][]}\n"
+say "Checking specific elements of 3d arrays: \n"
+say "{arr-3num[0][0][0]}\n"
+say "{arr-3chr[0][1][1]}\n"
+say "{arr-3str[0][0][1]}\n"
+say "{arr-3bool[0][1][0]}\n"
+.exc
+*/
