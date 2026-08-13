@@ -5,7 +5,8 @@
 
 typedef enum {
     STATEMENT_PRINT,
-    STATEMENT_VARIABLE_DECLARATION
+    STATEMENT_VARIABLE_DECLARATION,
+    STATEMENT_INPUT
 } StatementType;
 
 typedef struct {
@@ -13,6 +14,7 @@ typedef struct {
     union {
         PrintStatement print_statement;
         VariableDeclaration variable_declaration;
+        InputStatement input_statement;
     } as;
 } Statement;
 

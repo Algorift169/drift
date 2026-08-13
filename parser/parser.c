@@ -78,6 +78,8 @@ static int is_identifier_valid(const char *name)
     return 1;
 }
 
+static int parse_ask_statement(Parser *parser, Statement *statement);
+
 static Value parse_literal_value(Token *token)
 {
     if (token == NULL) {
@@ -146,12 +148,15 @@ Parser parser_create(Token *tokens, size_t count)
 static void variable_declaration_single_init(VariableDeclarationSingle *single)
 {
     single->name = NULL;
-    single->value = value_create_string(NULL);
+    single->value = value_create_null();
     single->is_declaration = 0;
     single->is_assignment = 0;
     single->is_array_element_assignment = 0;
     single->is_array_expression = 0;
     single->is_array_declared = 0;
+    single->is_input_expression = 0;
+    single->input_prompt = NULL;
+    single->input_target = NULL;
     array_access_init(&single->array_access);
 }
 
@@ -163,6 +168,10 @@ static void variable_declaration_single_free(VariableDeclarationSingle *single)
     free(single->name);
     single->name = NULL;
     value_free(&single->value);
+    free(single->input_prompt);
+    free(single->input_target);
+    single->input_prompt = NULL;
+    single->input_target = NULL;
     array_access_free(&single->array_access);
 }
 
@@ -196,8 +205,8 @@ static int parse_single_declaration(Parser *parser, VariableDeclarationSingle *s
 
     token = parser_peek(parser);
     if (token == NULL || is_statement_terminator(token) || token->type == TOKEN_COMMA) {
-        fprintf(stderr, "Syntax Error: Expected '=' or array dimensions after variable name.\n");
-        return 0;
+        single->value = value_create_null();
+        return 1;
     }
 
     if (is_array_element_assignment(parser, parser->index - 1U)) {
@@ -278,7 +287,19 @@ static int parse_single_declaration(Parser *parser, VariableDeclarationSingle *s
             return 0;
         }
 
-        if (token->type == TOKEN_IDENTIFIER) {
+        if (token->type == TOKEN_ASK) {
+            Statement input_statement;
+            if (!parse_ask_statement(parser, &input_statement)) {
+                return 0;
+            }
+
+            single->is_input_expression = 1;
+            single->input_prompt = input_statement.as.input_statement.prompt;
+            single->input_target = input_statement.as.input_statement.target_name;
+            single->value = value_create_null();
+            input_statement.as.input_statement.prompt = NULL;
+            input_statement.as.input_statement.target_name = NULL;
+        } else if (token->type == TOKEN_IDENTIFIER) {
             Token *next_token = NULL;
             if (parser->index + 1 < parser->count) {
                 next_token = &parser->tokens[parser->index + 1];
@@ -306,6 +327,142 @@ static int parse_single_declaration(Parser *parser, VariableDeclarationSingle *s
         return 0;
     }
 
+    return 1;
+}
+
+static char *parse_prompt_or_string(Parser *parser)
+{
+    Token *token = parser_peek(parser);
+    char *result = NULL;
+
+    if (token == NULL) {
+        return NULL;
+    }
+
+    if (token->type == TOKEN_STRING) {
+        if (token->value != NULL && token->value[0] == '\'' && token->value[strlen(token->value) - 1] == '\'') {
+            size_t length = strlen(token->value) - 2U;
+            char *stripped = (char *)malloc(length + 1U);
+            if (stripped != NULL) {
+                memcpy(stripped, token->value + 1, length);
+                stripped[length] = '\0';
+                result = stripped;
+            } else {
+                result = drift_duplicate_string(token->value);
+            }
+        } else {
+            result = drift_duplicate_string(token->value);
+        }
+        parser_advance(parser);
+        return result;
+    }
+
+    return NULL;
+}
+
+static void strip_implicit_target_from_prompt(char **prompt, char **target_name)
+{
+    char *text;
+    char *open;
+    char *close;
+    char *name;
+    size_t name_len;
+    char *cleaned;
+
+    if (prompt == NULL || *prompt == NULL || target_name == NULL) {
+        return;
+    }
+
+    text = *prompt;
+    open = strstr(text, "{@");
+    if (open == NULL) {
+        return;
+    }
+
+    close = strchr(open + 2, '}');
+    if (close == NULL) {
+        return;
+    }
+
+    name_len = (size_t)(close - (open + 2));
+    name = (char *)malloc(name_len + 1U);
+    if (name == NULL) {
+        return;
+    }
+    memcpy(name, open + 2, name_len);
+    name[name_len] = '\0';
+
+    cleaned = (char *)malloc(strlen(text) - (close - open) + 1U);
+    if (cleaned == NULL) {
+        free(name);
+        return;
+    }
+
+    memcpy(cleaned, text, (size_t)(open - text));
+    memcpy(cleaned + (open - text), close + 1, strlen(close + 1) + 1U);
+
+    *target_name = name;
+    free(*prompt);
+    *prompt = cleaned;
+}
+
+static int parse_ask_statement(Parser *parser, Statement *statement)
+{
+    InputStatement input_statement;
+    Token *token;
+    char *prompt = NULL;
+    char *target_name = NULL;
+
+    input_statement.prompt = NULL;
+    input_statement.target_name = NULL;
+    input_statement.has_prompt = 0;
+    input_statement.has_target = 0;
+
+    parser_advance(parser);
+
+    token = parser_peek(parser);
+    if (token != NULL && token->type == TOKEN_STRING) {
+        prompt = parse_prompt_or_string(parser);
+        input_statement.prompt = prompt;
+        input_statement.has_prompt = 1;
+        token = parser_peek(parser);
+    }
+
+    if (prompt != NULL) {
+        strip_implicit_target_from_prompt(&input_statement.prompt, &target_name);
+        if (target_name != NULL) {
+            input_statement.target_name = target_name;
+            input_statement.has_target = 1;
+        }
+    }
+
+    if (token != NULL && token->type == TOKEN_AT) {
+        parser_advance(parser);
+        token = parser_peek(parser);
+        if (token == NULL || token->type != TOKEN_IDENTIFIER) {
+            fprintf(stderr, "Syntax Error: Expected variable name after '@'.\n");
+            free(prompt);
+            statement->type = STATEMENT_INPUT;
+            statement->as.input_statement = input_statement;
+            return 0;
+        }
+        target_name = drift_duplicate_string(token->value);
+        parser_advance(parser);
+        input_statement.target_name = target_name;
+        input_statement.has_target = 1;
+    }
+
+    if (prompt == NULL && target_name == NULL) {
+        fprintf(stderr, "Syntax Error: ask requires a prompt or a target variable.\n");
+        free(prompt);
+        free(target_name);
+        statement->type = STATEMENT_INPUT;
+        statement->as.input_statement = input_statement;
+        return 0;
+    }
+
+    statement->type = STATEMENT_INPUT;
+    statement->as.input_statement = input_statement;
     return 1;
 }
 
@@ -536,6 +693,13 @@ Statement parser_parse(Parser *parser)
 
         statement.type = STATEMENT_VARIABLE_DECLARATION;
         statement.as.variable_declaration = variable_declaration;
+        return statement;
+    }
+
+    if (token->type == TOKEN_ASK) {
+        if (!parse_ask_statement(parser, &statement)) {
+            return statement;
+        }
         return statement;
     }
 

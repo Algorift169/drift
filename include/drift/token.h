@@ -5,7 +5,9 @@
 
 typedef enum {
     TOKEN_SAY,
+    TOKEN_ASK,
     TOKEN_VAR,
+    TOKEN_AT,
     TOKEN_IDENTIFIER,
     TOKEN_EQUAL,
     TOKEN_INTEGER,

@@ -12,6 +12,9 @@ typedef struct {
     int is_array_element_assignment;
     int is_array_expression;
     int is_array_declared;
+    int is_input_expression;
+    char *input_prompt;
+    char *input_target;
     ArrayAccess array_access;
 } VariableDeclarationSingle;
 
@@ -26,5 +29,12 @@ typedef struct {
     int has_array_access;
     ArrayAccess array_access;
 } PrintStatement;
+
+typedef struct {
+    char *prompt;
+    char *target_name;
+    int has_prompt;
+    int has_target;
+} InputStatement;
 
 #endif

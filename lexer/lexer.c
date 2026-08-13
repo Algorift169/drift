@@ -90,6 +90,11 @@ static Token read_identifier(Lexer *lexer)
         return make_token(TOKEN_SAY, drift_duplicate_string("say"));
     }
 
+    if (strcmp(value, "ask") == 0) {
+        free(value);
+        return make_token(TOKEN_ASK, drift_duplicate_string("ask"));
+    }
+
     if (strcmp(value, "var") == 0) {
         free(value);
         return make_token(TOKEN_VAR, drift_duplicate_string("var"));
@@ -309,6 +314,9 @@ Token *lexer_scan_all(Lexer *lexer, size_t *token_count)
 
         if (lexer->source[lexer->index] == '=') {
             tokens[count++] = make_token(TOKEN_EQUAL, drift_duplicate_string("="));
+            lexer->index++;
+        } else if (lexer->source[lexer->index] == '@') {
+            tokens[count++] = make_token(TOKEN_AT, drift_duplicate_string("@"));
             lexer->index++;
         } else if (lexer->source[lexer->index] == '{') {
             tokens[count++] = make_token(TOKEN_LEFT_BRACE, drift_duplicate_string("{"));

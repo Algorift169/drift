@@ -4,6 +4,7 @@
 
 #include "drift/array.h"
 #include "drift/array_value.h"
+#include "drift/input.h"
 #include "drift/interpreter.h"
 #include "drift/lexer.h"
 #include "drift/parser.h"
@@ -485,11 +486,70 @@ static char *interpolate_template(const char *template, Environment *environment
     return result;
 }
 
+static int resolve_input_target_name(const char *target_name, Environment *environment, Value *out_value)
+{
+    if (target_name == NULL || out_value == NULL) {
+        return 0;
+    }
+
+    if (!environment_get(environment, target_name, out_value)) {
+        *out_value = value_create_string("");
+    }
+
+    return 1;
+}
+
 int interpreter_execute(Statement statement, Environment *environment)
 {
     if (environment == NULL) {
         fprintf(stderr, "Runtime Error: missing execution environment.\n");
         return 1;
+    }
+
+    if (statement.type == STATEMENT_INPUT) {
+        InputStatement *input_statement = &statement.as.input_statement;
+        Value value;
+        char *resolved_prompt = NULL;
+
+        if (input_statement->has_prompt) {
+            resolved_prompt = interpolate_template(input_statement->prompt, environment);
+            if (resolved_prompt == NULL) {
+                return 1;
+            }
+        }
+
+        if (input_statement->has_target) {
+            if (!drift_prompt_and_store(resolved_prompt, input_statement->target_name, &value)) {
+                free(resolved_prompt);
+                fprintf(stderr, "Runtime Error: Unable to read input for '%s'.\n", input_statement->target_name);
+                return 1;
+            }
+            if (!environment_set(environment, input_statement->target_name, &value)) {
+                value_free(&value);
+                free(resolved_prompt);
+                fprintf(stderr, "Runtime Error: Unable to store input in variable '%s'.\n", input_statement->target_name);
+                return 1;
+            }
+            value_free(&value);
+            free(resolved_prompt);
+            return 0;
+        }
+
+        if (input_statement->has_prompt) {
+            if (!drift_prompt_and_store(resolved_prompt, "__temp_input__", &value)) {
+                free(resolved_prompt);
+                fprintf(stderr, "Runtime Error: Unable to read prompt input.\n");
+                return 1;
+            }
+        } else {
+            if (!drift_prompt_and_store(NULL, "__temp_input__", &value)) {
+                fprintf(stderr, "Runtime Error: Unable to read input.\n");
+                return 1;
+            }
+        }
+
+        free(resolved_prompt);
+        return 0;
     }
 
     if (statement.type == STATEMENT_PRINT) {
@@ -629,7 +689,35 @@ int interpreter_execute(Statement statement, Environment *environment)
                 return 1;
             }
 
-            if (single->is_assignment && single->is_array_expression) {
+            if (single->is_input_expression) {
+                Value prompt_value = value_create_null();
+                char *resolved_prompt = NULL;
+
+                if (single->input_prompt != NULL) {
+                    resolved_prompt = interpolate_template(single->input_prompt, environment);
+                    if (resolved_prompt == NULL) {
+                        return 1;
+                    }
+                }
+
+                if (single->input_target != NULL) {
+                    if (!drift_prompt_and_store(resolved_prompt, single->input_target, &prompt_value)) {
+                        free(resolved_prompt);
+                        fprintf(stderr, "Runtime Error: Unable to read input for '%s'.\n", single->input_target);
+                        return 1;
+                    }
+                    value = prompt_value;
+                } else {
+                    if (!drift_prompt_and_store(resolved_prompt, single->name, &prompt_value)) {
+                        free(resolved_prompt);
+                        fprintf(stderr, "Runtime Error: Unable to read input for '%s'.\n", single->name);
+                        return 1;
+                    }
+                    value = prompt_value;
+                }
+
+                free(resolved_prompt);
+            } else if (single->is_assignment && single->is_array_expression) {
                 Value source;
                 if (!environment_get(environment, single->array_access.name, &source)) {
                     fprintf(stderr, "Runtime Error: Undefined variable '%s'.\n", single->array_access.name);

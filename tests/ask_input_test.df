@@ -1,0 +1,17 @@
+/*
+This file is to check the input system of this language which is just 
+implemented.
+
+@exc
+var age = 0
+ask "Enter your age: " @age
+say "Age at format - 1: {age}"
+
+var agee = ask "Enter your age: "
+say "Age at format - 2: {agee}"
+
+var ageee
+ask "Enter your age: {@ageee} "
+say "Age at format - 3: {ageee}"
+.exc
+*/
