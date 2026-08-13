@@ -114,10 +114,16 @@ static Value parse_literal_value_token(Token *token)
 
 static int array_element_type_compatible(ValueType current, ValueType incoming)
 {
-    if (current == VALUE_NULL || current == VALUE_INFINITY) {
-        return current == incoming;
+    if (current == incoming) {
+        return 1;
     }
-    return current == incoming;
+
+    if ((current == VALUE_INTEGER || current == VALUE_FLOAT) &&
+        (incoming == VALUE_INTEGER || incoming == VALUE_FLOAT)) {
+        return 1;
+    }
+
+    return 0;
 }
 
 static int array_update_element_type(ValueType *type, ValueType incoming)
