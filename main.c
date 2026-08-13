@@ -102,8 +102,15 @@ static void statement_free(Statement *statement)
     } else if (statement->type == STATEMENT_VARIABLE_DECLARATION) {
         variable_declaration_free(&statement->as.variable_declaration);
     } else if (statement->type == STATEMENT_INPUT) {
-        free(statement->as.input_statement.prompt);
-        free(statement->as.input_statement.target_name);
+        if (statement->as.input_statement.items != NULL) {
+            for (size_t i = 0; i < statement->as.input_statement.count; ++i) {
+                free(statement->as.input_statement.items[i].prompt);
+                free(statement->as.input_statement.items[i].target_name);
+            }
+            free(statement->as.input_statement.items);
+            statement->as.input_statement.items = NULL;
+            statement->as.input_statement.count = 0;
+        }
     }
 }
 

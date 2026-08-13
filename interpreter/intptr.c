@@ -508,47 +508,44 @@ int interpreter_execute(Statement statement, Environment *environment)
 
     if (statement.type == STATEMENT_INPUT) {
         InputStatement *input_statement = &statement.as.input_statement;
-        Value value;
-        char *resolved_prompt = NULL;
 
-        if (input_statement->has_prompt) {
-            resolved_prompt = interpolate_template(input_statement->prompt, environment);
-            if (resolved_prompt == NULL) {
-                return 1;
-            }
+        if (input_statement->items == NULL || input_statement->count == 0) {
+            fprintf(stderr, "Runtime Error: Empty input statement.\n");
+            return 1;
         }
 
-        if (input_statement->has_target) {
-            if (!drift_prompt_and_store(resolved_prompt, input_statement->target_name, &value)) {
+        for (size_t i = 0; i < input_statement->count; ++i) {
+            InputItem *item = &input_statement->items[i];
+            Value value;
+            char *resolved_prompt = NULL;
+            char *target_name = item->has_target ? item->target_name : "__temp_input__";
+
+            if (item->has_prompt) {
+                resolved_prompt = interpolate_template(item->prompt, environment);
+                if (resolved_prompt == NULL) {
+                    return 1;
+                }
+            }
+
+            if (!drift_prompt_and_store(resolved_prompt, target_name, &value)) {
                 free(resolved_prompt);
-                fprintf(stderr, "Runtime Error: Unable to read input for '%s'.\n", input_statement->target_name);
+                fprintf(stderr, "Runtime Error: Unable to read input for '%s'.\n", target_name);
                 return 1;
             }
-            if (!environment_set(environment, input_statement->target_name, &value)) {
-                value_free(&value);
-                free(resolved_prompt);
-                fprintf(stderr, "Runtime Error: Unable to store input in variable '%s'.\n", input_statement->target_name);
-                return 1;
+
+            if (item->has_target) {
+                if (!environment_set(environment, item->target_name, &value)) {
+                    value_free(&value);
+                    free(resolved_prompt);
+                    fprintf(stderr, "Runtime Error: Unable to store input in variable '%s'.\n", item->target_name);
+                    return 1;
+                }
             }
+
             value_free(&value);
             free(resolved_prompt);
-            return 0;
         }
 
-        if (input_statement->has_prompt) {
-            if (!drift_prompt_and_store(resolved_prompt, "__temp_input__", &value)) {
-                free(resolved_prompt);
-                fprintf(stderr, "Runtime Error: Unable to read prompt input.\n");
-                return 1;
-            }
-        } else {
-            if (!drift_prompt_and_store(NULL, "__temp_input__", &value)) {
-                fprintf(stderr, "Runtime Error: Unable to read input.\n");
-                return 1;
-            }
-        }
-
-        free(resolved_prompt);
         return 0;
     }
 

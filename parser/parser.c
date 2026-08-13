@@ -294,11 +294,20 @@ static int parse_single_declaration(Parser *parser, VariableDeclarationSingle *s
             }
 
             single->is_input_expression = 1;
-            single->input_prompt = input_statement.as.input_statement.prompt;
-            single->input_target = input_statement.as.input_statement.target_name;
+            if (input_statement.as.input_statement.count > 0) {
+                single->input_prompt = input_statement.as.input_statement.items[0].prompt;
+                single->input_target = input_statement.as.input_statement.items[0].target_name;
+            } else {
+                single->input_prompt = NULL;
+                single->input_target = NULL;
+            }
             single->value = value_create_null();
-            input_statement.as.input_statement.prompt = NULL;
-            input_statement.as.input_statement.target_name = NULL;
+            if (input_statement.as.input_statement.items != NULL) {
+                for (size_t i = 0; i < input_statement.as.input_statement.count; ++i) {
+                    input_statement.as.input_statement.items[i].prompt = NULL;
+                    input_statement.as.input_statement.items[i].target_name = NULL;
+                }
+            }
         } else if (token->type == TOKEN_IDENTIFIER) {
             Token *next_token = NULL;
             if (parser->index + 1 < parser->count) {
@@ -409,58 +418,114 @@ static void strip_implicit_target_from_prompt(char **prompt, char **target_name)
 static int parse_ask_statement(Parser *parser, Statement *statement)
 {
     InputStatement input_statement;
+    size_t item_count = 0;
+    size_t item_capacity = 4;
+    InputItem *items = (InputItem *)calloc(item_capacity, sizeof(InputItem));
     Token *token;
-    char *prompt = NULL;
-    char *target_name = NULL;
 
-    input_statement.prompt = NULL;
-    input_statement.target_name = NULL;
-    input_statement.has_prompt = 0;
-    input_statement.has_target = 0;
-
-    parser_advance(parser);
-
-    token = parser_peek(parser);
-    if (token != NULL && token->type == TOKEN_STRING) {
-        prompt = parse_prompt_or_string(parser);
-        input_statement.prompt = prompt;
-        input_statement.has_prompt = 1;
-        token = parser_peek(parser);
-    }
-
-    if (prompt != NULL) {
-        strip_implicit_target_from_prompt(&input_statement.prompt, &target_name);
-        if (target_name != NULL) {
-            input_statement.target_name = target_name;
-            input_statement.has_target = 1;
-        }
-    }
-
-    if (token != NULL && token->type == TOKEN_AT) {
-        parser_advance(parser);
-        token = parser_peek(parser);
-        if (token == NULL || token->type != TOKEN_IDENTIFIER) {
-            fprintf(stderr, "Syntax Error: Expected variable name after '@'.\n");
-            free(prompt);
-            statement->type = STATEMENT_INPUT;
-            statement->as.input_statement = input_statement;
-            return 0;
-        }
-        target_name = drift_duplicate_string(token->value);
-        parser_advance(parser);
-        input_statement.target_name = target_name;
-        input_statement.has_target = 1;
-    }
-
-    if (prompt == NULL && target_name == NULL) {
-        fprintf(stderr, "Syntax Error: ask requires a prompt or a target variable.\n");
-        free(prompt);
-        free(target_name);
-        statement->type = STATEMENT_INPUT;
-        statement->as.input_statement = input_statement;
+    if (items == NULL) {
+        fprintf(stderr, "Error: out of memory while parsing ask statement.\n");
         return 0;
     }
 
+    input_statement.items = items;
+    input_statement.count = 0;
+
+    parser_advance(parser);
+
+    while (1) {
+        InputItem item;
+        char *prompt = NULL;
+        char *target_name = NULL;
+        int saw_prompt = 0;
+        int saw_target = 0;
+
+        item.prompt = NULL;
+        item.target_name = NULL;
+        item.has_prompt = 0;
+        item.has_target = 0;
+
+        token = parser_peek(parser);
+        if (token != NULL && token->type == TOKEN_STRING) {
+            prompt = parse_prompt_or_string(parser);
+            item.prompt = prompt;
+            item.has_prompt = 1;
+            saw_prompt = 1;
+            token = parser_peek(parser);
+        }
+
+        if (prompt != NULL) {
+            strip_implicit_target_from_prompt(&item.prompt, &target_name);
+            if (target_name != NULL) {
+                item.target_name = target_name;
+                item.has_target = 1;
+                saw_target = 1;
+            }
+        }
+
+        if (token != NULL && token->type == TOKEN_AT) {
+            parser_advance(parser);
+            token = parser_peek(parser);
+            if (token == NULL || token->type != TOKEN_IDENTIFIER) {
+                fprintf(stderr, "Syntax Error: Expected variable name after '@'.\n");
+                free(prompt);
+                free(target_name);
+                for (size_t i = 0; i < item_count; ++i) {
+                    free(items[i].prompt);
+                    free(items[i].target_name);
+                }
+                free(items);
+                return 0;
+            }
+            target_name = drift_duplicate_string(token->value);
+            parser_advance(parser);
+            item.target_name = target_name;
+            item.has_target = 1;
+            saw_target = 1;
+        }
+
+        if (!saw_prompt && !saw_target) {
+            fprintf(stderr, "Syntax Error: ask requires a prompt or a target variable.\n");
+            free(prompt);
+            free(target_name);
+            for (size_t i = 0; i < item_count; ++i) {
+                free(items[i].prompt);
+                free(items[i].target_name);
+            }
+            free(items);
+            return 0;
+        }
+
+        if (item_count >= item_capacity) {
+            size_t new_capacity = item_capacity * 2U;
+            InputItem *new_items = (InputItem *)realloc(items, new_capacity * sizeof(InputItem));
+            if (new_items == NULL) {
+                fprintf(stderr, "Error: out of memory while parsing ask statement.\n");
+                for (size_t i = 0; i < item_count; ++i) {
+                    free(items[i].prompt);
+                    free(items[i].target_name);
+                }
+                free(items);
+                return 0;
+            }
+            items = new_items;
+            item_capacity = new_capacity;
+        }
+
+        items[item_count++] = item;
+
+        token = parser_peek(parser);
+        if (token == NULL || token->type == TOKEN_EOF || is_statement_terminator(token)) {
+            break;
+        }
+
+        if (token->type != TOKEN_STRING && token->type != TOKEN_AT) {
+            break;
+        }
+    }
+
+    input_statement.items = items;
+    input_statement.count = item_count;
     statement->type = STATEMENT_INPUT;
     statement->as.input_statement = input_statement;
     return 1;

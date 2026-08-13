@@ -1,0 +1,18 @@
+var first
+var last
+var nick
+var city
+var sport
+
+ask "First name: " @first "Last name: " @last
+say "Hello {first} {last}!"
+
+var age = ask "How old are you? "
+say "You are {age} years old."
+
+ask "User nick: {@nick} "
+say "Nick is {nick}"
+
+ask "City: " @city "Favorite sport: " @sport
+say "Your city is {city} and sport is {sport}."
+

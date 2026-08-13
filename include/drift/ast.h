@@ -35,6 +35,11 @@ typedef struct {
     char *target_name;
     int has_prompt;
     int has_target;
+} InputItem;
+
+typedef struct {
+    InputItem *items;
+    size_t count;
 } InputStatement;
 
 #endif
