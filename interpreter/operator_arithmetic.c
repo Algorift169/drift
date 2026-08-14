@@ -36,6 +36,42 @@ static int require_numeric_pair(const Value *left, const Value *right, double *l
 Value operator_apply(OperatorType op, const Value *left, const Value *right)
 {
     Value result = value_create_null();
+
+    if (left == NULL || right == NULL) {
+        fprintf(stderr, "Runtime Error: Arithmetic operators require numeric values.\n");
+        return result;
+    }
+
+    if (left->type == VALUE_INTEGER && right->type == VALUE_INTEGER) {
+        long lval = left->integer_value;
+        long rval = right->integer_value;
+
+        if (op == OPERATOR_ADD) {
+            result = value_create_integer(lval + rval);
+        } else if (op == OPERATOR_SUBTRACT) {
+            result = value_create_integer(lval - rval);
+        } else if (op == OPERATOR_MULTIPLY) {
+            result = value_create_integer(lval * rval);
+        } else if (op == OPERATOR_DIVIDE) {
+            if (rval == 0) {
+                fprintf(stderr, "Runtime Error: Division by zero.\n");
+                return result;
+            }
+            if (lval % rval == 0) {
+                result = value_create_integer(lval / rval);
+            } else {
+                result = value_create_float((double)lval / (double)rval);
+            }
+        } else if (op == OPERATOR_MODULO) {
+            if (rval == 0) {
+                fprintf(stderr, "Runtime Error: Modulo by zero.\n");
+                return result;
+            }
+            result = value_create_integer(lval % rval);
+        }
+        return result;
+    }
+
     double lhs = 0.0;
     double rhs = 0.0;
 

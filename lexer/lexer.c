@@ -18,7 +18,7 @@ static int is_newline(char c)
 
 static int is_identifier_start(char c)
 {
-    return isalpha((unsigned char)c) || c == '_' || c == '-';
+    return isalpha((unsigned char)c) || c == '_';
 }
 
 static int is_identifier_part(char c)
@@ -338,14 +338,6 @@ Token *lexer_scan_all(Lexer *lexer, size_t *token_count)
             } else if (lexer->index + 1 < lexer->length && lexer->source[lexer->index + 1] == '=') {
                 tokens[count++] = make_token(TOKEN_MINUS_EQUAL, drift_duplicate_string("-="));
                 lexer->index += 2;
-            } else if (is_identifier_start(lexer->source[lexer->index])) {
-                Token token = read_identifier(lexer);
-                if (token.type == TOKEN_UNKNOWN) {
-                    fprintf(stderr, "Syntax Error: Invalid identifier\n");
-                    token_free_array(tokens, count);
-                    return NULL;
-                }
-                tokens[count++] = token;
             } else {
                 tokens[count++] = make_token(TOKEN_MINUS, drift_duplicate_string("-"));
                 lexer->index++;

@@ -58,6 +58,24 @@ Value operator_apply(OperatorType op, const Value *left, const Value *right)
     return value_create_null();
 }
 
+static int require_integer_value(const Value *val, long *out)
+{
+    if (val == NULL || out == NULL) {
+        return 0;
+    }
+    if (val->type == VALUE_INTEGER) {
+        *out = val->integer_value;
+        return 1;
+    }
+    if (val->type == VALUE_FLOAT) {
+        if (floor(val->float_value) == val->float_value) {
+            *out = (long)val->float_value;
+            return 1;
+        }
+    }
+    return 0;
+}
+
 static int require_numeric_pair(const Value *left, const Value *right, double *l, double *r)
 {
     if (left == NULL || right == NULL || l == NULL || r == NULL) {
@@ -90,6 +108,42 @@ static int require_numeric_pair(const Value *left, const Value *right, double *l
 static Value operator_apply_arithmetic(OperatorType op, const Value *left, const Value *right)
 {
     Value result = value_create_null();
+
+    if (left == NULL || right == NULL) {
+        fprintf(stderr, "Runtime Error: Arithmetic operators require numeric values.\n");
+        return result;
+    }
+
+    if (left->type == VALUE_INTEGER && right->type == VALUE_INTEGER) {
+        long lval = left->integer_value;
+        long rval = right->integer_value;
+
+        if (op == OPERATOR_ADD) {
+            result = value_create_integer(lval + rval);
+        } else if (op == OPERATOR_SUBTRACT) {
+            result = value_create_integer(lval - rval);
+        } else if (op == OPERATOR_MULTIPLY) {
+            result = value_create_integer(lval * rval);
+        } else if (op == OPERATOR_DIVIDE) {
+            if (rval == 0) {
+                fprintf(stderr, "Runtime Error: Division by zero.\n");
+                return result;
+            }
+            if (lval % rval == 0) {
+                result = value_create_integer(lval / rval);
+            } else {
+                result = value_create_float((double)lval / (double)rval);
+            }
+        } else if (op == OPERATOR_MODULO) {
+            if (rval == 0) {
+                fprintf(stderr, "Runtime Error: Modulo by zero.\n");
+                return result;
+            }
+            result = value_create_integer(lval % rval);
+        }
+        return result;
+    }
+
     double lhs = 0.0;
     double rhs = 0.0;
 
@@ -113,6 +167,10 @@ static Value operator_apply_arithmetic(OperatorType op, const Value *left, const
             }
             result = value_create_float(lhs / rhs);
         } else if (op == OPERATOR_MODULO) {
+            if (rhs == 0.0) {
+                fprintf(stderr, "Runtime Error: Modulo by zero.\n");
+                return result;
+            }
             result = value_create_float(fmod(lhs, rhs));
         }
     }
@@ -123,6 +181,7 @@ static Value operator_apply_arithmetic(OperatorType op, const Value *left, const
 static Value operator_apply_relational(OperatorType op, const Value *left, const Value *right)
 {
     Value result = value_create_boolean(0);
+    double lhs = 0.0, rhs = 0.0;
 
     if (left == NULL || right == NULL) {
         fprintf(stderr, "Runtime Error: Comparison operators require left and right operands.\n");
@@ -132,27 +191,29 @@ static Value operator_apply_relational(OperatorType op, const Value *left, const
     if (op == OPERATOR_EQUAL_EQUAL) {
         if (left->type == VALUE_STRING && right->type == VALUE_STRING) {
             result = value_create_boolean(strcmp(left->string_value ? left->string_value : "", right->string_value ? right->string_value : "") == 0);
+        } else if (require_numeric_pair(left, right, &lhs, &rhs)) {
+            result = value_create_boolean(lhs == rhs);
         } else {
             result = value_create_boolean(left->type == right->type && left->integer_value == right->integer_value && left->float_value == right->float_value);
         }
     } else if (op == OPERATOR_NOT_EQUAL) {
         if (left->type == VALUE_STRING && right->type == VALUE_STRING) {
             result = value_create_boolean(strcmp(left->string_value ? left->string_value : "", right->string_value ? right->string_value : "") != 0);
+        } else if (require_numeric_pair(left, right, &lhs, &rhs)) {
+            result = value_create_boolean(lhs != rhs);
         } else {
             result = value_create_boolean(!(left->type == right->type && left->integer_value == right->integer_value && left->float_value == right->float_value));
         }
-    } else if (op == OPERATOR_GREATER) {
-        result = value_create_boolean((left->type == VALUE_INTEGER && right->type == VALUE_INTEGER && left->integer_value > right->integer_value) ||
-                                     (left->type == VALUE_FLOAT && right->type == VALUE_FLOAT && left->float_value > right->float_value));
-    } else if (op == OPERATOR_LESS) {
-        result = value_create_boolean((left->type == VALUE_INTEGER && right->type == VALUE_INTEGER && left->integer_value < right->integer_value) ||
-                                     (left->type == VALUE_FLOAT && right->type == VALUE_FLOAT && left->float_value < right->float_value));
-    } else if (op == OPERATOR_GREATER_EQUAL) {
-        result = value_create_boolean((left->type == VALUE_INTEGER && right->type == VALUE_INTEGER && left->integer_value >= right->integer_value) ||
-                                     (left->type == VALUE_FLOAT && right->type == VALUE_FLOAT && left->float_value >= right->float_value));
-    } else if (op == OPERATOR_LESS_EQUAL) {
-        result = value_create_boolean((left->type == VALUE_INTEGER && right->type == VALUE_INTEGER && left->integer_value <= right->integer_value) ||
-                                     (left->type == VALUE_FLOAT && right->type == VALUE_FLOAT && left->float_value <= right->float_value));
+    } else if (require_numeric_pair(left, right, &lhs, &rhs)) {
+        if (op == OPERATOR_GREATER) {
+            result = value_create_boolean(lhs > rhs);
+        } else if (op == OPERATOR_LESS) {
+            result = value_create_boolean(lhs < rhs);
+        } else if (op == OPERATOR_GREATER_EQUAL) {
+            result = value_create_boolean(lhs >= rhs);
+        } else if (op == OPERATOR_LESS_EQUAL) {
+            result = value_create_boolean(lhs <= rhs);
+        }
     }
 
     return result;
@@ -214,14 +275,16 @@ static Value operator_apply_logical(OperatorType op, const Value *left, const Va
 static Value operator_apply_bitwise(OperatorType op, const Value *left, const Value *right)
 {
     Value result = value_create_null();
+    long lval = 0;
+    long rval = 0;
 
     if (op == OPERATOR_BITWISE_NOT) {
         if (left == NULL) {
             fprintf(stderr, "Runtime Error: Bitwise NOT requires an operand.\n");
             return result;
         }
-        if (left->type == VALUE_INTEGER) {
-            result = value_create_integer(~left->integer_value);
+        if (require_integer_value(left, &lval)) {
+            result = value_create_integer(~lval);
         } else {
             fprintf(stderr, "Runtime Error: Bitwise NOT requires an integer.\n");
         }
@@ -230,13 +293,10 @@ static Value operator_apply_bitwise(OperatorType op, const Value *left, const Va
             fprintf(stderr, "Runtime Error: Bitwise operators require two operands.\n");
             return result;
         }
-        if (left->type != VALUE_INTEGER || right->type != VALUE_INTEGER) {
+        if (!require_integer_value(left, &lval) || !require_integer_value(right, &rval)) {
             fprintf(stderr, "Runtime Error: Bitwise operators require integers.\n");
             return result;
         }
-
-        long lval = left->integer_value;
-        long rval = right->integer_value;
 
         if (op == OPERATOR_BITWISE_AND) {
             result = value_create_integer(lval & rval);

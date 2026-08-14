@@ -548,30 +548,6 @@ static int parse_single_declaration(Parser *parser, VariableDeclarationSingle *s
             }
             single->value = value_create_null();
         }
-
-        if (token->type == TOKEN_IDENTIFIER) {
-            Token *next_token = NULL;
-            if (parser->index + 1 < parser->count) {
-                next_token = &parser->tokens[parser->index + 1];
-            }
-
-            if (next_token != NULL && (next_token->type == TOKEN_LEFT_BRACKET ||
-                                       (next_token->type == TOKEN_DOT && parser->index + 2 < parser->count &&
-                                        parser->tokens[parser->index + 2].type == TOKEN_IDENTIFIER &&
-                                        strcmp(parser->tokens[parser->index + 2].value, "select") == 0))) {
-                if (!parse_array_access(parser, &single->array_access)) {
-                    return 0;
-                }
-                single->is_array_expression = single->is_array_declared;
-                single->value = value_create_string(NULL);
-            } else {
-                single->value = parse_literal_value(token);
-                parser_advance(parser);
-            }
-        } else {
-            single->value = parse_literal_value(token);
-            parser_advance(parser);
-        }
     } else {
         fprintf(stderr, "Syntax Error: Expected '=' or array dimensions after variable name.\n");
         return 0;
