@@ -1,0 +1,8 @@
+var x,y
+ask "Enter two numbers: " @x @y
+say x == y
+say x != y
+say x > y
+say x < y
+say x >= y
+say x <= y

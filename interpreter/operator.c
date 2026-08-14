@@ -178,43 +178,114 @@ static Value operator_apply_arithmetic(OperatorType op, const Value *left, const
     return result;
 }
 
+static int value_to_numeric(const Value *val, double *out)
+{
+    if (val == NULL || out == NULL) return 0;
+    if (val->type == VALUE_INTEGER) {
+        *out = (double)val->integer_value;
+        return 1;
+    }
+    if (val->type == VALUE_FLOAT) {
+        *out = val->float_value;
+        return 1;
+    }
+    if (val->type == VALUE_BOOLEAN) {
+        *out = val->boolean_value ? 1.0 : 0.0;
+        return 1;
+    }
+    if (val->type == VALUE_INFINITY) {
+        *out = INFINITY;
+        return 1;
+    }
+    if (val->type == VALUE_STRING && val->string_value != NULL) {
+        char *end = NULL;
+        double d = strtod(val->string_value, &end);
+        if (end != val->string_value && *end == '\0') {
+            *out = d;
+            return 1;
+        }
+    }
+    return 0;
+}
+
+static void value_to_string_buf(const Value *val, char *buf, size_t buf_size)
+{
+    if (val == NULL || buf == NULL || buf_size == 0) return;
+    buf[0] = '\0';
+    if (val->type == VALUE_STRING) {
+        snprintf(buf, buf_size, "%s", val->string_value ? val->string_value : "");
+    } else if (val->type == VALUE_INTEGER) {
+        snprintf(buf, buf_size, "%ld", val->integer_value);
+    } else if (val->type == VALUE_FLOAT) {
+        snprintf(buf, buf_size, "%g", val->float_value);
+    } else if (val->type == VALUE_BOOLEAN) {
+        snprintf(buf, buf_size, "%s", val->boolean_value ? "true" : "false");
+    } else if (val->type == VALUE_NULL) {
+        snprintf(buf, buf_size, "null");
+    } else if (val->type == VALUE_INFINITY) {
+        snprintf(buf, buf_size, "infinity");
+    } else if (val->type == VALUE_ARRAY) {
+        snprintf(buf, buf_size, "[array]");
+    }
+}
+
 static Value operator_apply_relational(OperatorType op, const Value *left, const Value *right)
 {
     Value result = value_create_boolean(0);
-    double lhs = 0.0, rhs = 0.0;
 
     if (left == NULL || right == NULL) {
-        fprintf(stderr, "Runtime Error: Comparison operators require left and right operands.\n");
+        if (op == OPERATOR_NOT_EQUAL) {
+            return value_create_boolean(left != right);
+        }
+        return value_create_boolean(left == right);
+    }
+
+    if (left->type == VALUE_INTEGER && right->type == VALUE_INTEGER) {
+        long lval = left->integer_value;
+        long rval = right->integer_value;
+        if (op == OPERATOR_EQUAL_EQUAL) result = value_create_boolean(lval == rval);
+        else if (op == OPERATOR_NOT_EQUAL) result = value_create_boolean(lval != rval);
+        else if (op == OPERATOR_GREATER) result = value_create_boolean(lval > rval);
+        else if (op == OPERATOR_LESS) result = value_create_boolean(lval < rval);
+        else if (op == OPERATOR_GREATER_EQUAL) result = value_create_boolean(lval >= rval);
+        else if (op == OPERATOR_LESS_EQUAL) result = value_create_boolean(lval <= rval);
         return result;
     }
 
-    if (op == OPERATOR_EQUAL_EQUAL) {
-        if (left->type == VALUE_STRING && right->type == VALUE_STRING) {
-            result = value_create_boolean(strcmp(left->string_value ? left->string_value : "", right->string_value ? right->string_value : "") == 0);
-        } else if (require_numeric_pair(left, right, &lhs, &rhs)) {
-            result = value_create_boolean(lhs == rhs);
-        } else {
-            result = value_create_boolean(left->type == right->type && left->integer_value == right->integer_value && left->float_value == right->float_value);
-        }
-    } else if (op == OPERATOR_NOT_EQUAL) {
-        if (left->type == VALUE_STRING && right->type == VALUE_STRING) {
-            result = value_create_boolean(strcmp(left->string_value ? left->string_value : "", right->string_value ? right->string_value : "") != 0);
-        } else if (require_numeric_pair(left, right, &lhs, &rhs)) {
-            result = value_create_boolean(lhs != rhs);
-        } else {
-            result = value_create_boolean(!(left->type == right->type && left->integer_value == right->integer_value && left->float_value == right->float_value));
-        }
-    } else if (require_numeric_pair(left, right, &lhs, &rhs)) {
-        if (op == OPERATOR_GREATER) {
-            result = value_create_boolean(lhs > rhs);
-        } else if (op == OPERATOR_LESS) {
-            result = value_create_boolean(lhs < rhs);
-        } else if (op == OPERATOR_GREATER_EQUAL) {
-            result = value_create_boolean(lhs >= rhs);
-        } else if (op == OPERATOR_LESS_EQUAL) {
-            result = value_create_boolean(lhs <= rhs);
-        }
+    if (left->type == VALUE_STRING && right->type == VALUE_STRING) {
+        const char *ls = left->string_value ? left->string_value : "";
+        const char *rs = right->string_value ? right->string_value : "";
+        int cmp = strcmp(ls, rs);
+        if (op == OPERATOR_EQUAL_EQUAL) result = value_create_boolean(cmp == 0);
+        else if (op == OPERATOR_NOT_EQUAL) result = value_create_boolean(cmp != 0);
+        else if (op == OPERATOR_GREATER) result = value_create_boolean(cmp > 0);
+        else if (op == OPERATOR_LESS) result = value_create_boolean(cmp < 0);
+        else if (op == OPERATOR_GREATER_EQUAL) result = value_create_boolean(cmp >= 0);
+        else if (op == OPERATOR_LESS_EQUAL) result = value_create_boolean(cmp <= 0);
+        return result;
     }
+
+    double lnum = 0.0, rnum = 0.0;
+    if (value_to_numeric(left, &lnum) && value_to_numeric(right, &rnum)) {
+        if (op == OPERATOR_EQUAL_EQUAL) result = value_create_boolean(lnum == rnum);
+        else if (op == OPERATOR_NOT_EQUAL) result = value_create_boolean(lnum != rnum);
+        else if (op == OPERATOR_GREATER) result = value_create_boolean(lnum > rnum);
+        else if (op == OPERATOR_LESS) result = value_create_boolean(lnum < rnum);
+        else if (op == OPERATOR_GREATER_EQUAL) result = value_create_boolean(lnum >= rnum);
+        else if (op == OPERATOR_LESS_EQUAL) result = value_create_boolean(lnum <= rnum);
+        return result;
+    }
+
+    char lstr[256], rstr[256];
+    value_to_string_buf(left, lstr, sizeof(lstr));
+    value_to_string_buf(right, rstr, sizeof(rstr));
+    int cmp = strcmp(lstr, rstr);
+    if (op == OPERATOR_EQUAL_EQUAL) result = value_create_boolean(cmp == 0);
+    else if (op == OPERATOR_NOT_EQUAL) result = value_create_boolean(cmp != 0);
+    else if (op == OPERATOR_GREATER) result = value_create_boolean(cmp > 0);
+    else if (op == OPERATOR_LESS) result = value_create_boolean(cmp < 0);
+    else if (op == OPERATOR_GREATER_EQUAL) result = value_create_boolean(cmp >= 0);
+    else if (op == OPERATOR_LESS_EQUAL) result = value_create_boolean(cmp <= 0);
 
     return result;
 }

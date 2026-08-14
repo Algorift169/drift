@@ -214,6 +214,19 @@ static Value resolve_identifier_or_literal(Environment *environment, Token *toke
         return value_create_float(v);
     }
     if (token->type == TOKEN_STRING) {
+        if (token->value != NULL && (token->value[0] == '"' || token->value[0] == '\'')) {
+            size_t len = strlen(token->value);
+            if (len >= 2 && token->value[len - 1] == token->value[0]) {
+                char *unquoted = (char *)malloc(len - 1);
+                if (unquoted != NULL) {
+                    memcpy(unquoted, token->value + 1, len - 2);
+                    unquoted[len - 2] = '\0';
+                    Value v = value_create_string(unquoted);
+                    free(unquoted);
+                    return v;
+                }
+            }
+        }
         return value_create_string(token->value);
     }
     if (token->type == TOKEN_TRUE) {
@@ -898,6 +911,19 @@ int interpreter_execute(Statement statement, Environment *environment)
         PrintStatement *print_statement = &statement.as.print_statement;
         Value value;
         char *resolved = NULL;
+
+        if (print_statement->has_expression) {
+            int ok = 0;
+            Value expr_value = evaluate_expression_text(environment, print_statement->expression_text, &ok);
+            if (!ok) {
+                fprintf(stderr, "Runtime Error: Failed to evaluate expression '%s'.\n", print_statement->expression_text ? print_statement->expression_text : "");
+                return 1;
+            }
+            print_value(&expr_value);
+            value_free(&expr_value);
+            printf("\n");
+            return 0;
+        }
 
         if (print_statement->value == NULL && !print_statement->has_array_access) {
             return 1;
