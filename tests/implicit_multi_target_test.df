@@ -1,0 +1,2 @@
+var x, y
+ask "Enter 2 numbers: {@x@y}"

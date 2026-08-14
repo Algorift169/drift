@@ -1,3 +1,4 @@
+#include <ctype.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -586,50 +587,93 @@ static char *parse_prompt_or_string(Parser *parser)
     return NULL;
 }
 
-static void strip_implicit_target_from_prompt(char **prompt, char **target_name)
+static char **extract_implicit_targets_from_prompt(char **prompt, size_t *out_count)
 {
     char *text;
     char *open;
     char *close;
-    char *name;
-    size_t name_len;
     char *cleaned;
+    char **targets = NULL;
+    size_t count = 0;
+    size_t capacity = 4;
 
-    if (prompt == NULL || *prompt == NULL || target_name == NULL) {
-        return;
+    if (out_count != NULL) {
+        *out_count = 0;
+    }
+
+    if (prompt == NULL || *prompt == NULL) {
+        return NULL;
     }
 
     text = *prompt;
-    open = strstr(text, "{@");
+    open = strchr(text, '{');
     if (open == NULL) {
-        return;
+        return NULL;
     }
 
-    close = strchr(open + 2, '}');
+    close = strchr(open + 1, '}');
     if (close == NULL) {
-        return;
+        return NULL;
     }
 
-    name_len = (size_t)(close - (open + 2));
-    name = (char *)malloc(name_len + 1U);
-    if (name == NULL) {
-        return;
+    targets = (char **)malloc(capacity * sizeof(char *));
+    if (targets == NULL) {
+        return NULL;
     }
-    memcpy(name, open + 2, name_len);
-    name[name_len] = '\0';
+
+    const char *p = open + 1;
+    while (p < close) {
+        while (p < close && (isspace((unsigned char)*p) || *p == '@' || *p == ',')) {
+            p++;
+        }
+        if (p >= close) break;
+
+        const char *start = p;
+        while (p < close && (isalnum((unsigned char)*p) || *p == '_')) {
+            p++;
+        }
+
+        size_t len = (size_t)(p - start);
+        if (len > 0) {
+            char *name = (char *)malloc(len + 1U);
+            if (name != NULL) {
+                memcpy(name, start, len);
+                name[len] = '\0';
+
+                if (count >= capacity) {
+                    capacity *= 2U;
+                    char **new_targets = (char **)realloc(targets, capacity * sizeof(char *));
+                    if (new_targets == NULL) {
+                        free(name);
+                        break;
+                    }
+                    targets = new_targets;
+                }
+                targets[count++] = name;
+            }
+        } else {
+            p++;
+        }
+    }
 
     cleaned = (char *)malloc(strlen(text) - (close - open) + 1U);
-    if (cleaned == NULL) {
-        free(name);
-        return;
+    if (cleaned != NULL) {
+        memcpy(cleaned, text, (size_t)(open - text));
+        memcpy(cleaned + (open - text), close + 1, strlen(close + 1) + 1U);
+        free(*prompt);
+        *prompt = cleaned;
     }
 
-    memcpy(cleaned, text, (size_t)(open - text));
-    memcpy(cleaned + (open - text), close + 1, strlen(close + 1) + 1U);
+    if (out_count != NULL) {
+        *out_count = count;
+    }
 
-    *target_name = name;
-    free(*prompt);
-    *prompt = cleaned;
+    if (count == 0) {
+        free(targets);
+        return NULL;
+    }
+
+    return targets;
 }
 
 static int parse_ask_statement(Parser *parser, Statement *statement)
@@ -672,11 +716,42 @@ static int parse_ask_statement(Parser *parser, Statement *statement)
         }
 
         if (prompt != NULL) {
-            strip_implicit_target_from_prompt(&item.prompt, &target_name);
-            if (target_name != NULL) {
-                item.target_name = target_name;
-                item.has_target = 1;
+            size_t target_count = 0;
+            char **implicit_targets = extract_implicit_targets_from_prompt(&prompt, &target_count);
+            if (implicit_targets != NULL && target_count > 0) {
+                item.prompt = NULL;
+                item.target_name = NULL;
+                item.has_prompt = 0;
+                item.has_target = 0;
+
+                for (size_t k = 0; k < target_count; ++k) {
+                    InputItem sub_item;
+                    sub_item.prompt = (k == 0) ? prompt : NULL;
+                    sub_item.target_name = implicit_targets[k];
+                    sub_item.has_prompt = (k == 0) ? 1 : 0;
+                    sub_item.has_target = 1;
+
+                    if (item_count >= item_capacity) {
+                        size_t new_capacity = item_capacity * 2U;
+                        InputItem *new_items = (InputItem *)realloc(items, new_capacity * sizeof(InputItem));
+                        if (new_items == NULL) {
+                            fprintf(stderr, "Error: out of memory while parsing ask statement.\n");
+                            free(implicit_targets);
+                            return 0;
+                        }
+                        items = new_items;
+                        item_capacity = new_capacity;
+                    }
+                    items[item_count++] = sub_item;
+                }
+                free(implicit_targets);
+                saw_prompt = 1;
                 saw_target = 1;
+                prompt = NULL;
+            } else {
+                item.prompt = prompt;
+                item.has_prompt = 1;
+                saw_prompt = 1;
             }
         }
 
@@ -713,23 +788,25 @@ static int parse_ask_statement(Parser *parser, Statement *statement)
             return 0;
         }
 
-        if (item_count >= item_capacity) {
-            size_t new_capacity = item_capacity * 2U;
-            InputItem *new_items = (InputItem *)realloc(items, new_capacity * sizeof(InputItem));
-            if (new_items == NULL) {
-                fprintf(stderr, "Error: out of memory while parsing ask statement.\n");
-                for (size_t i = 0; i < item_count; ++i) {
-                    free(items[i].prompt);
-                    free(items[i].target_name);
+        if (item.has_prompt || item.has_target) {
+            if (item_count >= item_capacity) {
+                size_t new_capacity = item_capacity * 2U;
+                InputItem *new_items = (InputItem *)realloc(items, new_capacity * sizeof(InputItem));
+                if (new_items == NULL) {
+                    fprintf(stderr, "Error: out of memory while parsing ask statement.\n");
+                    for (size_t i = 0; i < item_count; ++i) {
+                        free(items[i].prompt);
+                        free(items[i].target_name);
+                    }
+                    free(items);
+                    return 0;
                 }
-                free(items);
-                return 0;
+                items = new_items;
+                item_capacity = new_capacity;
             }
-            items = new_items;
-            item_capacity = new_capacity;
-        }
 
-        items[item_count++] = item;
+            items[item_count++] = item;
+        }
 
         token = parser_peek(parser);
         if (token == NULL || token->type == TOKEN_EOF || is_statement_terminator(token)) {
