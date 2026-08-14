@@ -421,6 +421,12 @@ static Value evaluate_expression_tokens(Environment *environment, Token *tokens,
 
     while (*index < count) {
         TokenType op = tokens[*index].type;
+        if (op == TOKEN_TILDA) {
+            fprintf(stderr, "Runtime Error: Bitwise NOT is unary and must be written as '~value'.\n");
+            *ok = 0;
+            return left;
+        }
+
         int precedence = token_precedence(op);
         if (precedence < min_precedence) {
             break;
@@ -477,6 +483,11 @@ static Value evaluate_expression_tokens(Environment *environment, Token *tokens,
             left = operator_apply(OPERATOR_SHIFT_LEFT, &left, &right);
         } else if (op == TOKEN_SHIFT_RIGHT) {
             left = operator_apply(OPERATOR_SHIFT_RIGHT, &left, &right);
+        } else if (op == TOKEN_TILDA) {
+            fprintf(stderr, "Runtime Error: Bitwise NOT is unary and must be written as '~value'.\n");
+            *ok = 0;
+            value_free(&right);
+            return left;
         } else {
             *ok = 0;
             return left;
