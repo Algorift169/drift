@@ -29,15 +29,27 @@
           "end": "\\*/",
           "patterns": [
             {
-              "name": "comment.block.executable-marker.drift",
-              "match": "@exc|\\.exc",
-              "captures": {
-                "0": { "name": "keyword.control.executive-comment.drift" }
-              }
-            },
-            { "include": "#strings" },
-            { "include": "#chars" },
-            { "include": "#numbers" }
+              "name": "meta.embedded.block.drift",
+              "begin": "^\\s*@exc\\s*$",
+              "end": "^\\s*\\.exc\\s*$",
+              "beginCaptures": {
+                "0": { "name": "comment.line.drift" }
+              },
+              "endCaptures": {
+                "0": { "name": "comment.line.drift" }
+              },
+              "patterns": [
+                { "include": "#strings" },
+                { "include": "#chars" },
+                { "include": "#numbers" },
+                { "include": "#keywords" },
+                { "include": "#constants" },
+                { "include": "#operators" },
+                { "include": "#brackets" },
+                { "include": "#functions" },
+                { "include": "#identifiers" }
+              ]
+            }
           ]
         }
       ]
