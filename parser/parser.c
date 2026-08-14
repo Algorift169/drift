@@ -52,6 +52,23 @@ static int is_assignment_operator_token(TokenType type)
            type == TOKEN_MINUS_MINUS;
 }
 
+static int is_top_level_expression_boundary(Token *token, int paren_depth, int bracket_depth, int brace_depth)
+{
+    if (token == NULL) {
+        return 1;
+    }
+
+    if (token->type == TOKEN_EOF || is_statement_terminator(token)) {
+        return 1;
+    }
+
+    if (token->type == TOKEN_COMMA && paren_depth == 0 && bracket_depth == 0 && brace_depth == 0) {
+        return 1;
+    }
+
+    return 0;
+}
+
 static int is_array_element_assignment(Parser *parser, size_t start)
 {
     size_t index = start + 1U;
@@ -103,6 +120,7 @@ static int is_identifier_valid(const char *name)
 }
 
 static int parse_ask_statement(Parser *parser, Statement *statement);
+static void append_expression_token(char *expression_text, Token *token);
 
 static Value parse_literal_value(Token *token)
 {
@@ -374,10 +392,40 @@ static int parse_single_declaration(Parser *parser, VariableDeclarationSingle *s
         }
 
         size_t length = 0;
-        Token *current = parser_peek(parser);
-        while (current != NULL && !is_statement_terminator(current) && current->type != TOKEN_COMMA && current->type != TOKEN_EOF) {
+        size_t scan_index = parser->index;
+        int paren_depth = 0;
+        int bracket_depth = 0;
+        int brace_depth = 0;
+
+        while (scan_index < parser->count) {
+            Token *current = &parser->tokens[scan_index];
+            if (is_top_level_expression_boundary(current, paren_depth, bracket_depth, brace_depth)) {
+                break;
+            }
+
             length += strlen(current->value ? current->value : "") + 1U;
-            current = &parser->tokens[parser->index + (size_t)(current - &parser->tokens[parser->index]) + 1U];
+
+            if (current->type == TOKEN_LEFT_PAREN) {
+                paren_depth++;
+            } else if (current->type == TOKEN_RIGHT_PAREN) {
+                if (paren_depth > 0) {
+                    paren_depth--;
+                }
+            } else if (current->type == TOKEN_LEFT_BRACKET) {
+                bracket_depth++;
+            } else if (current->type == TOKEN_RIGHT_BRACKET) {
+                if (bracket_depth > 0) {
+                    bracket_depth--;
+                }
+            } else if (current->type == TOKEN_LEFT_BRACE) {
+                brace_depth++;
+            } else if (current->type == TOKEN_RIGHT_BRACE) {
+                if (brace_depth > 0) {
+                    brace_depth--;
+                }
+            }
+
+            scan_index++;
         }
 
         single->has_expression = 1;
@@ -388,15 +436,37 @@ static int parse_single_declaration(Parser *parser, VariableDeclarationSingle *s
         }
         single->expression_text[0] = '\0';
 
-        while (parser->index < parser->count && !is_statement_terminator(&parser->tokens[parser->index]) && parser->tokens[parser->index].type != TOKEN_COMMA && parser->tokens[parser->index].type != TOKEN_EOF) {
+        while (parser->index < parser->count) {
             Token *tok = &parser->tokens[parser->index];
+            if (is_top_level_expression_boundary(tok, paren_depth, bracket_depth, brace_depth)) {
+                break;
+            }
+
             if (single->expression_text[0] != '\0') {
                 strcat(single->expression_text, " ");
             }
-            if (tok->value != NULL) {
-                strcat(single->expression_text, tok->value);
-            }
+            append_expression_token(single->expression_text, tok);
             parser_advance(parser);
+
+            if (tok->type == TOKEN_LEFT_PAREN) {
+                paren_depth++;
+            } else if (tok->type == TOKEN_RIGHT_PAREN) {
+                if (paren_depth > 0) {
+                    paren_depth--;
+                }
+            } else if (tok->type == TOKEN_LEFT_BRACKET) {
+                bracket_depth++;
+            } else if (tok->type == TOKEN_RIGHT_BRACKET) {
+                if (bracket_depth > 0) {
+                    bracket_depth--;
+                }
+            } else if (tok->type == TOKEN_LEFT_BRACE) {
+                brace_depth++;
+            } else if (tok->type == TOKEN_RIGHT_BRACE) {
+                if (brace_depth > 0) {
+                    brace_depth--;
+                }
+            }
         }
         single->value = value_create_null();
         return 1;
@@ -520,13 +590,60 @@ static int parse_single_declaration(Parser *parser, VariableDeclarationSingle *s
             }
             single->is_assignment = 1;
             return 1;
-        } else {
-            size_t start_index = parser->index;
+        } else if (token->type == TOKEN_IDENTIFIER) {
+            Token *next_token = NULL;
+            if (parser->index + 1 < parser->count) {
+                next_token = &parser->tokens[parser->index + 1];
+            }
+
+            if (next_token != NULL && (next_token->type == TOKEN_LEFT_BRACKET ||
+                                       (next_token->type == TOKEN_DOT && parser->index + 2 < parser->count &&
+                                        parser->tokens[parser->index + 2].type == TOKEN_IDENTIFIER &&
+                                        strcmp(parser->tokens[parser->index + 2].value, "select") == 0))) {
+                if (!parse_array_access(parser, &single->array_access)) {
+                    return 0;
+                }
+                single->is_array_expression = 1;
+                single->is_assignment = 1;
+                single->value = value_create_null();
+                return 1;
+            }
+
             size_t length = 0;
-            Token *current = parser_peek(parser);
-            while (current != NULL && !is_statement_terminator(current) && current->type != TOKEN_COMMA && current->type != TOKEN_EOF) {
+            size_t scan_index = parser->index;
+            int paren_depth = 0;
+            int bracket_depth = 0;
+            int brace_depth = 0;
+
+            while (scan_index < parser->count) {
+                Token *current = &parser->tokens[scan_index];
+                if (is_top_level_expression_boundary(current, paren_depth, bracket_depth, brace_depth)) {
+                    break;
+                }
+
                 length += strlen(current->value ? current->value : "") + 1U;
-                current = &parser->tokens[parser->index + (size_t)(current - &parser->tokens[start_index]) + 1U];
+
+                if (current->type == TOKEN_LEFT_PAREN) {
+                    paren_depth++;
+                } else if (current->type == TOKEN_RIGHT_PAREN) {
+                    if (paren_depth > 0) {
+                        paren_depth--;
+                    }
+                } else if (current->type == TOKEN_LEFT_BRACKET) {
+                    bracket_depth++;
+                } else if (current->type == TOKEN_RIGHT_BRACKET) {
+                    if (bracket_depth > 0) {
+                        bracket_depth--;
+                    }
+                } else if (current->type == TOKEN_LEFT_BRACE) {
+                    brace_depth++;
+                } else if (current->type == TOKEN_RIGHT_BRACE) {
+                    if (brace_depth > 0) {
+                        brace_depth--;
+                    }
+                }
+
+                scan_index++;
             }
 
             single->has_expression = 1;
@@ -537,15 +654,116 @@ static int parse_single_declaration(Parser *parser, VariableDeclarationSingle *s
             }
             single->expression_text[0] = '\0';
 
-            while (parser->index < parser->count && !is_statement_terminator(&parser->tokens[parser->index]) && parser->tokens[parser->index].type != TOKEN_COMMA && parser->tokens[parser->index].type != TOKEN_EOF) {
+            while (parser->index < parser->count) {
                 Token *tok = &parser->tokens[parser->index];
+                if (is_top_level_expression_boundary(tok, paren_depth, bracket_depth, brace_depth)) {
+                    break;
+                }
+
                 if (single->expression_text[0] != '\0') {
                     strcat(single->expression_text, " ");
                 }
-                if (tok->value != NULL) {
-                    strcat(single->expression_text, tok->value);
-                }
+                append_expression_token(single->expression_text, tok);
                 parser_advance(parser);
+
+                if (tok->type == TOKEN_LEFT_PAREN) {
+                    paren_depth++;
+                } else if (tok->type == TOKEN_RIGHT_PAREN) {
+                    if (paren_depth > 0) {
+                        paren_depth--;
+                    }
+                } else if (tok->type == TOKEN_LEFT_BRACKET) {
+                    bracket_depth++;
+                } else if (tok->type == TOKEN_RIGHT_BRACKET) {
+                    if (bracket_depth > 0) {
+                        bracket_depth--;
+                    }
+                } else if (tok->type == TOKEN_LEFT_BRACE) {
+                    brace_depth++;
+                } else if (tok->type == TOKEN_RIGHT_BRACE) {
+                    if (brace_depth > 0) {
+                        brace_depth--;
+                    }
+                }
+            }
+            single->value = value_create_null();
+        } else {
+            size_t length = 0;
+            size_t scan_index = parser->index;
+            int paren_depth = 0;
+            int bracket_depth = 0;
+            int brace_depth = 0;
+
+            while (scan_index < parser->count) {
+                Token *current = &parser->tokens[scan_index];
+                if (is_top_level_expression_boundary(current, paren_depth, bracket_depth, brace_depth)) {
+                    break;
+                }
+
+                length += strlen(current->value ? current->value : "") + 1U;
+
+                if (current->type == TOKEN_LEFT_PAREN) {
+                    paren_depth++;
+                } else if (current->type == TOKEN_RIGHT_PAREN) {
+                    if (paren_depth > 0) {
+                        paren_depth--;
+                    }
+                } else if (current->type == TOKEN_LEFT_BRACKET) {
+                    bracket_depth++;
+                } else if (current->type == TOKEN_RIGHT_BRACKET) {
+                    if (bracket_depth > 0) {
+                        bracket_depth--;
+                    }
+                } else if (current->type == TOKEN_LEFT_BRACE) {
+                    brace_depth++;
+                } else if (current->type == TOKEN_RIGHT_BRACE) {
+                    if (brace_depth > 0) {
+                        brace_depth--;
+                    }
+                }
+
+                scan_index++;
+            }
+
+            single->has_expression = 1;
+            single->expression_text = (char *)malloc(length + 1U);
+            if (single->expression_text == NULL) {
+                fprintf(stderr, "Error: out of memory while reading expression.\n");
+                return 0;
+            }
+            single->expression_text[0] = '\0';
+
+            while (parser->index < parser->count) {
+                Token *tok = &parser->tokens[parser->index];
+                if (is_top_level_expression_boundary(tok, paren_depth, bracket_depth, brace_depth)) {
+                    break;
+                }
+
+                if (single->expression_text[0] != '\0') {
+                    strcat(single->expression_text, " ");
+                }
+                append_expression_token(single->expression_text, tok);
+                parser_advance(parser);
+
+                if (tok->type == TOKEN_LEFT_PAREN) {
+                    paren_depth++;
+                } else if (tok->type == TOKEN_RIGHT_PAREN) {
+                    if (paren_depth > 0) {
+                        paren_depth--;
+                    }
+                } else if (tok->type == TOKEN_LEFT_BRACKET) {
+                    bracket_depth++;
+                } else if (tok->type == TOKEN_RIGHT_BRACKET) {
+                    if (bracket_depth > 0) {
+                        bracket_depth--;
+                    }
+                } else if (tok->type == TOKEN_LEFT_BRACE) {
+                    brace_depth++;
+                } else if (tok->type == TOKEN_RIGHT_BRACE) {
+                    if (brace_depth > 0) {
+                        brace_depth--;
+                    }
+                }
             }
             single->value = value_create_null();
         }
@@ -555,6 +773,27 @@ static int parse_single_declaration(Parser *parser, VariableDeclarationSingle *s
     }
 
     return 1;
+}
+
+static void append_expression_token(char *expression_text, Token *token)
+{
+    if (expression_text == NULL || token == NULL || token->value == NULL) {
+        return;
+    }
+
+    if (token->type == TOKEN_STRING) {
+        if (token->value[0] == '"' || token->value[0] == '\'') {
+            strcat(expression_text, token->value);
+            return;
+        }
+
+        strcat(expression_text, "\"");
+        strcat(expression_text, token->value);
+        strcat(expression_text, "\"");
+        return;
+    }
+
+    strcat(expression_text, token->value);
 }
 
 static char *parse_prompt_or_string(Parser *parser)

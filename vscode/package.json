@@ -1,0 +1,35 @@
+{
+  "name": "drift-language-support",
+  "displayName": "Drift Language Support",
+  "description": "Basic VS Code support for the Drift scripting language.",
+  "version": "0.1.0",
+  "publisher": "local",
+  "engines": {
+    "vscode": "^1.80.0"
+  },
+  "categories": [
+    "Programming Languages"
+  ],
+  "contributes": {
+    "languages": [
+      {
+        "id": "drift",
+        "aliases": [
+          "Drift",
+          "drift"
+        ],
+        "extensions": [
+          ".df"
+        ],
+        "configuration": "./language-configuration.json"
+      }
+    ],
+    "grammars": [
+      {
+        "language": "drift",
+        "scopeName": "source.drift",
+        "path": "./syntaxes/drift.tmLanguage.json"
+      }
+    ]
+  }
+}

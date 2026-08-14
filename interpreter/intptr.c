@@ -134,6 +134,75 @@ static int resolve_array_indices(const ArrayAccess *access, Environment *environ
     return 1;
 }
 
+static int resolve_nested_array_access(const Value *base_value, const ArrayAccess *access, Environment *environment, Value *out_value)
+{
+    Value current = value_create_null();
+    long *indices = NULL;
+
+    if (base_value == NULL || access == NULL || out_value == NULL) {
+        return 0;
+    }
+
+    if (!resolve_array_indices(access, environment, &indices)) {
+        return 0;
+    }
+
+    current = value_copy(base_value);
+    for (size_t i = 0; i < access->index_count; ++i) {
+        long index = indices[i];
+
+        if (current.type == VALUE_STRING) {
+            if (index < 0 || (size_t)index >= strlen(current.string_value ? current.string_value : "")) {
+                fprintf(stderr, "Runtime Error: String index out of bounds.\n");
+                value_free(&current);
+                free(indices);
+                return 0;
+            }
+            char single[2];
+            single[0] = (current.string_value ? current.string_value[index] : '\0');
+            single[1] = '\0';
+            value_free(&current);
+            current = value_create_string(single);
+            continue;
+        }
+
+        if (current.type != VALUE_ARRAY || current.array_value == NULL) {
+            fprintf(stderr, "Runtime Error: Only arrays and strings can be indexed.\n");
+            value_free(&current);
+            free(indices);
+            return 0;
+        }
+
+        if (current.array_value->dimension_count != 1) {
+            const Value *element = array_value_get_element(current.array_value, indices + i, access->index_count - i, &(int){0});
+            if (element == NULL) {
+                fprintf(stderr, "Runtime Error: Array index out of bounds.\n");
+                value_free(&current);
+                free(indices);
+                return 0;
+            }
+            value_free(&current);
+            current = value_copy(element);
+            break;
+        }
+
+        if (index < 0 || (size_t)index >= current.array_value->length) {
+            fprintf(stderr, "Runtime Error: Array index out of bounds.\n");
+            value_free(&current);
+            free(indices);
+            return 0;
+        }
+
+        Value next = value_copy(&current.array_value->elements[index]);
+        value_free(&current);
+        current = next;
+    }
+
+    free(indices);
+    *out_value = current;
+    return 1;
+}
+
 static int parse_array_template_expression(const char *expr, ArrayAccess *access)
 {
     if (expr == NULL || access == NULL) {
@@ -189,6 +258,46 @@ static int value_is_truthy(const Value *value)
     if (value->type == VALUE_ARRAY) {
         return value->array_value != NULL && value->array_value->length > 0;
     }
+    return 0;
+}
+
+static int resolve_indexed_value(const Value *container, long index, Value *out_value)
+{
+    if (container == NULL || out_value == NULL) {
+        return 0;
+    }
+
+    *out_value = value_create_null();
+
+    if (container->type == VALUE_ARRAY) {
+        if (container->array_value == NULL || container->array_value->dimension_count != 1) {
+            fprintf(stderr, "Runtime Error: Only 1D array elements can be indexed with a single integer.");
+            return 0;
+        }
+        if (index < 0 || (size_t)index >= container->array_value->length) {
+            fprintf(stderr, "Runtime Error: Array index out of bounds.\n");
+            return 0;
+        }
+        *out_value = value_copy(&container->array_value->elements[index]);
+        return 1;
+    }
+
+    if (container->type == VALUE_STRING) {
+        char *text = container->string_value ? container->string_value : "";
+        size_t length = strlen(text);
+        if (index < 0 || (size_t)index >= length) {
+            fprintf(stderr, "Runtime Error: String index out of bounds.\n");
+            return 0;
+        }
+
+        char single[2];
+        single[0] = text[index];
+        single[1] = '\0';
+        *out_value = value_create_string(single);
+        return 1;
+    }
+
+    fprintf(stderr, "Runtime Error: Only array and string values can be indexed.\n");
     return 0;
 }
 
@@ -367,9 +476,7 @@ static Value evaluate_expression_tokens(Environment *environment, Token *tokens,
         left = resolve_identifier_or_literal(environment, token, ok);
         (*index)++;
         while (*index < count && tokens[*index].type == TOKEN_LEFT_BRACKET) {
-            size_t bracket_index = *index;
             Value index_value;
-            Value array_value;
             long arr_index = 0;
             (*index)++;
             index_value = evaluate_expression_tokens(environment, tokens, count, index, 0, ok);
@@ -379,6 +486,7 @@ static Value evaluate_expression_tokens(Environment *environment, Token *tokens,
             if (index_value.type != VALUE_INTEGER) {
                 fprintf(stderr, "Runtime Error: Array index must be an integer.\n");
                 *ok = 0;
+                value_free(&index_value);
                 return left;
             }
             arr_index = index_value.integer_value;
@@ -389,26 +497,13 @@ static Value evaluate_expression_tokens(Environment *environment, Token *tokens,
                 return left;
             }
             (*index)++;
-            if (left.type != VALUE_ARRAY) {
-                fprintf(stderr, "Runtime Error: Only array values can be indexed.\n");
+
+            Value next_value = value_create_null();
+            if (!resolve_indexed_value(&left, arr_index, &next_value)) {
                 *ok = 0;
                 return left;
             }
-            if (!environment_get(environment, left.string_value ? left.string_value : "", &array_value)) {
-                fprintf(stderr, "Runtime Error: Invalid array access.\n");
-                *ok = 0;
-                return left;
-            }
-            if (array_value.type == VALUE_ARRAY && array_value.array_value != NULL && arr_index >= 0 && (size_t)arr_index < array_value.array_value->length) {
-                left = value_copy(&array_value.array_value->elements[arr_index]);
-            } else {
-                fprintf(stderr, "Runtime Error: Array index out of bounds.\n");
-                *ok = 0;
-                value_free(&array_value);
-                return left;
-            }
-            value_free(&array_value);
-            (void)bracket_index;
+            left = next_value;
         }
     } else {
         *ok = 0;
@@ -957,6 +1052,33 @@ int interpreter_execute(Statement statement, Environment *environment)
                 free(resolved);
             }
 
+            if (value.type == VALUE_STRING) {
+                long *indices = NULL;
+                if (!resolve_array_indices(&print_statement->array_access, environment, &indices)) {
+                    value_free(&value);
+                    return 1;
+                }
+                if (print_statement->array_access.is_whole_array || print_statement->array_access.is_selection || print_statement->array_access.index_count != 1) {
+                    fprintf(stderr, "Runtime Error: String values only support single-index access.\n");
+                    free(indices);
+                    value_free(&value);
+                    return 1;
+                }
+
+                Value indexed = value_create_null();
+                if (!resolve_indexed_value(&value, indices[0], &indexed)) {
+                    free(indices);
+                    value_free(&value);
+                    return 1;
+                }
+                print_value(&indexed);
+                value_free(&indexed);
+                free(indices);
+                value_free(&value);
+                printf("\n");
+                return 0;
+            }
+
             if (value.type != VALUE_ARRAY) {
                 fprintf(stderr, "Runtime Error: Variable '%s' is not an array.\n", print_statement->array_access.name);
                 value_free(&value);
@@ -974,6 +1096,14 @@ int interpreter_execute(Statement statement, Environment *environment)
                 print_array_value(value.array_value);
             } else if (print_statement->array_access.is_selection) {
                 print_array_selection(value.array_value, &print_statement->array_access);
+            } else if (print_statement->array_access.index_count > 1 && value.array_value != NULL && value.array_value->dimension_count == 1) {
+                Value resolved_value = value_create_null();
+                if (!resolve_nested_array_access(&value, &print_statement->array_access, environment, &resolved_value)) {
+                    value_free(&value);
+                    return 1;
+                }
+                print_value(&resolved_value);
+                value_free(&resolved_value);
             } else {
                 long *indices = NULL;
                 if (!resolve_array_indices(&print_statement->array_access, environment, &indices)) {
@@ -1163,44 +1293,45 @@ int interpreter_execute(Statement statement, Environment *environment)
                     return 1;
                 }
 
-                int expr_ok = 0;
-                Value rhs = evaluate_expression_text(environment, single->expression_text, &expr_ok);
-                if (!expr_ok) {
+                if (single->assignment_operator == OPERATOR_INCREMENT || single->assignment_operator == OPERATOR_DECREMENT) {
+                    value = operator_apply(single->assignment_operator, &current_value, NULL);
                     value_free(&current_value);
-                    fprintf(stderr, "Runtime Error: Failed to evaluate assignment expression '%s'.\n", single->expression_text ? single->expression_text : "");
-                    return 1;
-                }
-
-                if (single->assignment_operator == OPERATOR_ADD_ASSIGN) {
-                    value = operator_apply(OPERATOR_ADD, &current_value, &rhs);
-                } else if (single->assignment_operator == OPERATOR_SUBTRACT_ASSIGN) {
-                    value = operator_apply(OPERATOR_SUBTRACT, &current_value, &rhs);
-                } else if (single->assignment_operator == OPERATOR_MULTIPLY_ASSIGN) {
-                    value = operator_apply(OPERATOR_MULTIPLY, &current_value, &rhs);
-                } else if (single->assignment_operator == OPERATOR_DIVIDE_ASSIGN) {
-                    value = operator_apply(OPERATOR_DIVIDE, &current_value, &rhs);
-                } else if (single->assignment_operator == OPERATOR_MODULO_ASSIGN) {
-                    value = operator_apply(OPERATOR_MODULO, &current_value, &rhs);
-                } else if (single->assignment_operator == OPERATOR_AND_ASSIGN) {
-                    value = operator_apply(OPERATOR_BITWISE_AND, &current_value, &rhs);
-                } else if (single->assignment_operator == OPERATOR_OR_ASSIGN) {
-                    value = operator_apply(OPERATOR_BITWISE_OR, &current_value, &rhs);
-                } else if (single->assignment_operator == OPERATOR_XOR_ASSIGN) {
-                    value = operator_apply(OPERATOR_BITWISE_XOR, &current_value, &rhs);
-                } else if (single->assignment_operator == OPERATOR_SHIFT_LEFT_ASSIGN) {
-                    value = operator_apply(OPERATOR_SHIFT_LEFT, &current_value, &rhs);
-                } else if (single->assignment_operator == OPERATOR_SHIFT_RIGHT_ASSIGN) {
-                    value = operator_apply(OPERATOR_SHIFT_RIGHT, &current_value, &rhs);
-                } else if (single->assignment_operator == OPERATOR_INCREMENT) {
-                    value = operator_apply(OPERATOR_INCREMENT, &current_value, NULL);
-                } else if (single->assignment_operator == OPERATOR_DECREMENT) {
-                    value = operator_apply(OPERATOR_DECREMENT, &current_value, NULL);
                 } else {
-                    value = rhs;
-                }
+                    int expr_ok = 0;
+                    Value rhs = evaluate_expression_text(environment, single->expression_text, &expr_ok);
+                    if (!expr_ok) {
+                        value_free(&current_value);
+                        fprintf(stderr, "Runtime Error: Failed to evaluate assignment expression '%s'.\n", single->expression_text ? single->expression_text : "");
+                        return 1;
+                    }
 
-                value_free(&current_value);
-                value_free(&rhs);
+                    if (single->assignment_operator == OPERATOR_ADD_ASSIGN) {
+                        value = operator_apply(OPERATOR_ADD, &current_value, &rhs);
+                    } else if (single->assignment_operator == OPERATOR_SUBTRACT_ASSIGN) {
+                        value = operator_apply(OPERATOR_SUBTRACT, &current_value, &rhs);
+                    } else if (single->assignment_operator == OPERATOR_MULTIPLY_ASSIGN) {
+                        value = operator_apply(OPERATOR_MULTIPLY, &current_value, &rhs);
+                    } else if (single->assignment_operator == OPERATOR_DIVIDE_ASSIGN) {
+                        value = operator_apply(OPERATOR_DIVIDE, &current_value, &rhs);
+                    } else if (single->assignment_operator == OPERATOR_MODULO_ASSIGN) {
+                        value = operator_apply(OPERATOR_MODULO, &current_value, &rhs);
+                    } else if (single->assignment_operator == OPERATOR_AND_ASSIGN) {
+                        value = operator_apply(OPERATOR_BITWISE_AND, &current_value, &rhs);
+                    } else if (single->assignment_operator == OPERATOR_OR_ASSIGN) {
+                        value = operator_apply(OPERATOR_BITWISE_OR, &current_value, &rhs);
+                    } else if (single->assignment_operator == OPERATOR_XOR_ASSIGN) {
+                        value = operator_apply(OPERATOR_BITWISE_XOR, &current_value, &rhs);
+                    } else if (single->assignment_operator == OPERATOR_SHIFT_LEFT_ASSIGN) {
+                        value = operator_apply(OPERATOR_SHIFT_LEFT, &current_value, &rhs);
+                    } else if (single->assignment_operator == OPERATOR_SHIFT_RIGHT_ASSIGN) {
+                        value = operator_apply(OPERATOR_SHIFT_RIGHT, &current_value, &rhs);
+                    } else {
+                        value = rhs;
+                    }
+
+                    value_free(&current_value);
+                    value_free(&rhs);
+                }
             } else if (single->is_assignment && single->is_array_expression) {
                 Value source;
                 if (!environment_get(environment, single->array_access.name, &source)) {
@@ -1234,35 +1365,50 @@ int interpreter_execute(Statement statement, Environment *environment)
                     return 1;
                 }
 
-                for (size_t k = 0; k < single->array_access.selection_count; ++k) {
-                    const long *indices = single->array_access.selection_indices + k * single->array_access.selection_tuple_size;
+                if (single->array_access.selection_count == 1) {
+                    const long *indices = single->array_access.selection_indices;
                     int error = 0;
                     const Value *element = array_value_get_element(source.array_value, indices, single->array_access.selection_tuple_size, &error);
                     if (element == NULL) {
                         fprintf(stderr, "Runtime Error: Array index out of bounds.\n");
-                        for (size_t j = 0; j < k; ++j) {
-                            value_free(&values[j]);
-                        }
                         free(values);
                         value_free(&source);
                         return 1;
                     }
-                    values[k] = value_copy(element);
-                }
+                    value = value_copy(element);
+                    free(values);
+                    value_free(&source);
+                } else {
+                    for (size_t k = 0; k < single->array_access.selection_count; ++k) {
+                        const long *indices = single->array_access.selection_indices + k * single->array_access.selection_tuple_size;
+                        int error = 0;
+                        const Value *element = array_value_get_element(source.array_value, indices, single->array_access.selection_tuple_size, &error);
+                        if (element == NULL) {
+                            fprintf(stderr, "Runtime Error: Array index out of bounds.\n");
+                            for (size_t j = 0; j < k; ++j) {
+                                value_free(&values[j]);
+                            }
+                            free(values);
+                            value_free(&source);
+                            return 1;
+                        }
+                        values[k] = value_copy(element);
+                    }
 
-                ArrayValue *dynamic_array = array_value_create_dynamic_from_values(source.array_value->element_type, values, single->array_access.selection_count);
-                for (size_t k = 0; k < single->array_access.selection_count; ++k) {
-                    value_free(&values[k]);
-                }
-                free(values);
-                value_free(&source);
+                    ArrayValue *dynamic_array = array_value_create_dynamic_from_values(source.array_value->element_type, values, single->array_access.selection_count);
+                    for (size_t k = 0; k < single->array_access.selection_count; ++k) {
+                        value_free(&values[k]);
+                    }
+                    free(values);
+                    value_free(&source);
 
-                if (dynamic_array == NULL) {
-                    fprintf(stderr, "Error: out of memory while creating dynamic array\n");
-                    return 1;
-                }
+                    if (dynamic_array == NULL) {
+                        fprintf(stderr, "Error: out of memory while creating dynamic array\n");
+                        return 1;
+                    }
 
-                value = value_create_array(dynamic_array);
+                    value = value_create_array(dynamic_array);
+                }
             } else if (single->is_assignment && single->array_access.name != NULL) {
                 Value source;
                 if (!environment_get(environment, single->array_access.name, &source)) {

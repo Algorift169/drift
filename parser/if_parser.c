@@ -85,6 +85,38 @@ static void free_statement_list(Statement *body, size_t count)
     free(body);
 }
 
+static void append_condition_token(char *result, size_t *length, Token *token)
+{
+    if (result == NULL || length == NULL || token == NULL || token->value == NULL) {
+        return;
+    }
+
+    if (token->type == TOKEN_STRING) {
+        if (token->value[0] == '"' || token->value[0] == '\'') {
+            size_t len = strlen(token->value);
+            memcpy(result + *length, token->value, len);
+            *length += len;
+            result[*length] = '\0';
+            return;
+        }
+
+        result[(*length)++] = '"';
+        result[*length] = '\0';
+        size_t len = strlen(token->value);
+        memcpy(result + *length, token->value, len);
+        *length += len;
+        result[*length] = '\0';
+        result[(*length)++] = '"';
+        result[*length] = '\0';
+        return;
+    }
+
+    size_t len = strlen(token->value);
+    memcpy(result + *length, token->value, len);
+    *length += len;
+    result[*length] = '\0';
+}
+
 static char *read_expression_until_colon(Parser *parser)
 {
     size_t length = 0;
@@ -93,7 +125,11 @@ static char *read_expression_until_colon(Parser *parser)
 
     while ((token = parser_peek(parser)) != NULL && token->type != TOKEN_COLON && token->type != TOKEN_EOF && !is_statement_terminator(token)) {
         size_t token_len = token->value != NULL ? strlen(token->value) : 0U;
-        char *new_result = (char *)realloc(result, length + token_len + 2U);
+        size_t extra = token_len + 2U;
+        if (token->type == TOKEN_STRING && token->value != NULL && token->value[0] != '"' && token->value[0] != '\'') {
+            extra += 2U;
+        }
+        char *new_result = (char *)realloc(result, length + extra);
         if (new_result == NULL) {
             free(result);
             return NULL;
@@ -102,9 +138,8 @@ static char *read_expression_until_colon(Parser *parser)
         if (length > 0U) {
             result[length++] = ' ';
         }
-        if (token_len > 0U) {
-            memcpy(result + length, token->value, token_len);
-            length += token_len;
+        if (token->value != NULL) {
+            append_condition_token(result, &length, token);
         }
         result[length] = '\0';
         parser_advance(parser);

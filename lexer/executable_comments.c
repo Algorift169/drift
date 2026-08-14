@@ -66,24 +66,20 @@ char *extract_executable_from_exc_blocks(const char *source)
     }
 
     while (i < source_len) {
-        /* Look for start of block comment */
         if (!in_block_comment && i + 1 < source_len && source[i] == '/' && source[i + 1] == '*') {
             in_block_comment = 1;
             i += 2;
             continue;
         }
 
-        /* If not in block comment, copy character as-is */
         if (!in_block_comment) {
             result[result_idx++] = source[i++];
             continue;
         }
 
-        /* In block comment: look for lines and markers */
         size_t line_start = i;
         size_t line_end = i;
 
-        /* Find end of line or block end */
         while (line_end < source_len && source[line_end] != '\n') {
             if (check_block_end(source, line_end, source_len)) {
                 break;
@@ -91,9 +87,7 @@ char *extract_executable_from_exc_blocks(const char *source)
             line_end++;
         }
 
-        /* Check if we hit a block comment end marker */
         if (line_end < source_len && source[line_end] != '\n') {
-            /* This is the end of block comment */
             char *trimmed = trim_line(source + line_start, line_end - line_start);
             if (trimmed) {
                 if (is_exc_marker(trimmed, ".exc")) {
@@ -106,7 +100,6 @@ char *extract_executable_from_exc_blocks(const char *source)
             continue;
         }
 
-        /* Trim the line to check for @exc and .exc */
         char *trimmed = trim_line(source + line_start, line_end - line_start);
 
         if (trimmed) {
@@ -115,7 +108,6 @@ char *extract_executable_from_exc_blocks(const char *source)
             } else if (is_exc_marker(trimmed, ".exc")) {
                 in_exc_block = 0;
             } else if (in_exc_block && trimmed[0] != '\0') {
-                /* This is executable code */
                 if (result_idx > 0 && result[result_idx - 1] != '\n') {
                     result[result_idx++] = '\n';
                 }
@@ -126,7 +118,6 @@ char *extract_executable_from_exc_blocks(const char *source)
             free(trimmed);
         }
 
-        /* Move to next line */
         i = line_end;
         if (i < source_len && source[i] == '\n') {
             i++;
