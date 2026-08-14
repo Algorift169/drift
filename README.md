@@ -9,6 +9,7 @@ Source code -> Lexer -> Tokens -> Parser -> AST -> Interpreter -> Output
 - `say` statements for output
 - variable declarations with `var`
 - string, integer, float, and boolean literals
+- **conditional statements** with `if`, `elif`, and `else`
 - **comments support** (`//` single-line and `/* */` multi-line)
 - simple REPL mode with multi-line comment continuation
 - file-based execution
@@ -78,6 +79,25 @@ var age = 20
 say "Name: {name}"      // Print name
 say "Age: {age}"        /* Print age */
 ```
+
+## Conditional Statements
+
+Drift supports `if`, `elif`, and `else` statements for control flow:
+
+```drift
+var score = 85
+
+if score >= 90 :
+    say "Excellent!"
+elif score >= 80 :
+    say "Good job!"
+elif score >= 70 :
+    say "Passing"
+else :
+    say "Needs improvement"
+```
+
+**Note:** Conditional statements work correctly in **file mode**. The REPL has a known limitation with multi-line if/elif/else blocks due to its line-oriented nature. For interactive testing of conditionals, use the file-based execution.
 
 ## Notes
 

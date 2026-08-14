@@ -100,6 +100,21 @@ static Token read_identifier(Lexer *lexer)
         return make_token(TOKEN_VAR, drift_duplicate_string("var"));
     }
 
+    if (strcmp(value, "if") == 0) {
+        free(value);
+        return make_token(TOKEN_IF, drift_duplicate_string("if"));
+    }
+
+    if (strcmp(value, "elif") == 0) {
+        free(value);
+        return make_token(TOKEN_ELIF, drift_duplicate_string("elif"));
+    }
+
+    if (strcmp(value, "else") == 0) {
+        free(value);
+        return make_token(TOKEN_ELSE, drift_duplicate_string("else"));
+    }
+
     if (strcmp(value, "true") == 0 || strcmp(value, "TRUE") == 0) {
         free(value);
         return make_token(TOKEN_TRUE, drift_duplicate_string("true"));
@@ -480,6 +495,9 @@ Token *lexer_scan_all(Lexer *lexer, size_t *token_count)
             lexer->index++;
         } else if (lexer->source[lexer->index] == ',') {
             tokens[count++] = make_token(TOKEN_COMMA, drift_duplicate_string(","));
+            lexer->index++;
+        } else if (lexer->source[lexer->index] == ':') {
+            tokens[count++] = make_token(TOKEN_COLON, drift_duplicate_string(":"));
             lexer->index++;
         } else if (lexer->source[lexer->index] == ';') {
             tokens[count++] = make_token(TOKEN_SEMICOLON, drift_duplicate_string(";"));

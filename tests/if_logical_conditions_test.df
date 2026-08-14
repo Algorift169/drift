@@ -1,0 +1,14 @@
+var a = 5
+var b = 7
+
+if a > 0 && b < 10 :
+    say "first"
+elif a < 0 || b > 10 :
+    say "second"
+else :
+    say "third"
+
+if a == 5 || a == 6 :
+    say "yes"
+else :
+    say "no"

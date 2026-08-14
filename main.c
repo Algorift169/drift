@@ -91,6 +91,48 @@ static char *trim_whitespace(const char *text)
     return result;
 }
 
+static size_t get_leading_spaces(const char *line)
+{
+    size_t count = 0;
+    if (line == NULL) return 0;
+    while (line[count] != '\0' && (line[count] == ' ' || line[count] == '\t')) {
+        count++;
+    }
+    return count;
+}
+
+static int has_pending_block_colon(const char *source)
+{
+    char *trimmed = trim_whitespace(source);
+    int result = 0;
+
+    if (trimmed == NULL || trimmed[0] == '\0') {
+        free(trimmed);
+        return 0;
+    }
+
+    if (trimmed[strlen(trimmed) - 1U] == ':') {
+        result = 1;
+    }
+
+    free(trimmed);
+    return result;
+}
+
+static int is_incomplete_block(const char *source)
+{
+    if (source == NULL || source[0] == '\0') {
+        return 0;
+    }
+
+    /* Check for trailing colon (pending block opener) */
+    if (has_pending_block_colon(source)) {
+        return 1;
+    }
+
+    return 0;
+}
+
 static void statement_free(Statement *statement)
 {
     if (statement == NULL) {
@@ -111,6 +153,8 @@ static void statement_free(Statement *statement)
             statement->as.input_statement.items = NULL;
             statement->as.input_statement.count = 0;
         }
+    } else if (statement->type == STATEMENT_IF) {
+        if_statement_free(&statement->as.if_statement);
     }
 }
 
@@ -231,7 +275,7 @@ static void run_repl(void)
         }
         free(trimmed);
 
-        if (is_block_comment_open(input_buffer)) {
+        if (is_block_comment_open(input_buffer) || is_incomplete_block(input_buffer)) {
             printf("... ");
             fflush(stdout);
             continue;

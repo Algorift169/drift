@@ -1,0 +1,29 @@
+// Test 1: Simple if-else
+var score = 75
+if score >= 50 :
+    say "pass"
+else :
+    say "fail"
+
+// Test 2: Multiple elif
+var grade = 85
+if grade >= 90 :
+    say "A"
+elif grade >= 80 :
+    say "B"
+elif grade >= 70 :
+    say "C"
+elif grade >= 60 :
+    say "D"
+else :
+    say "F"
+
+// Test 3: Boolean values
+var flag = true
+if flag :
+    say "flag is on"
+
+// Test 4: Comparison
+var num = 42
+if num == 42 :
+    say "the answer"

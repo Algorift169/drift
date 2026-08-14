@@ -1014,6 +1014,58 @@ int interpreter_execute(Statement statement, Environment *environment)
         return 0;
     }
 
+    if (statement.type == STATEMENT_IF) {
+        IfStatement *if_statement = &statement.as.if_statement;
+        char *condition_text = NULL;
+        int condition_ok = 0;
+        Value condition_value;
+
+        if (if_statement == NULL || if_statement->branches == NULL || if_statement->branch_count == 0) {
+            fprintf(stderr, "Runtime Error: Invalid if statement.\n");
+            return 1;
+        }
+
+        for (size_t i = 0; i < if_statement->branch_count; ++i) {
+            condition_text = if_statement->branches[i].condition_text;
+            if (condition_text == NULL || condition_text[0] == '\0') {
+                fprintf(stderr, "Runtime Error: Empty if condition.\n");
+                return 1;
+            }
+
+            condition_value = evaluate_expression_text(environment, condition_text, &condition_ok);
+            if (!condition_ok) {
+                fprintf(stderr, "Runtime Error: Failed to evaluate condition '%s'.\n", condition_text);
+                value_free(&condition_value);
+                return 1;
+            }
+
+            if (value_is_truthy(&condition_value)) {
+                for (size_t j = 0; j < if_statement->branches[i].body_count; ++j) {
+                    int result = interpreter_execute(if_statement->branches[i].body[j], environment);
+                    if (result != 0) {
+                        value_free(&condition_value);
+                        return result;
+                    }
+                }
+                value_free(&condition_value);
+                return 0;
+            }
+
+            value_free(&condition_value);
+        }
+
+        if (if_statement->else_body != NULL && if_statement->else_count > 0) {
+            for (size_t j = 0; j < if_statement->else_count; ++j) {
+                int result = interpreter_execute(if_statement->else_body[j], environment);
+                if (result != 0) {
+                    return result;
+                }
+            }
+        }
+
+        return 0;
+    }
+
     if (statement.type == STATEMENT_VARIABLE_DECLARATION) {
         VariableDeclaration *declaration = &statement.as.variable_declaration;
 
