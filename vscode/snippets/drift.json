@@ -1,0 +1,11 @@
+{
+  "Executable block": {
+    "prefix": "@exc",
+    "body": [
+      "@exc",
+      "",
+      ".exc"
+    ],
+    "description": "Insert a Drift executable code block"
+  }
+}

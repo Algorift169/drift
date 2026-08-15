@@ -3,6 +3,7 @@
   "name": "Drift",
   "scopeName": "source.drift",
   "patterns": [
+    { "include": "#excMarkers" },
     { "include": "#comments" },
     { "include": "#strings" },
     { "include": "#chars" },
@@ -14,6 +15,14 @@
     { "include": "#functions" }
   ],
   "repository": {
+    "excMarkers": {
+      "patterns": [
+        {
+          "name": "invalid.illegal.drift",
+          "match": "@(?=exc\\b)|\\.exc\\b"
+        }
+      ]
+    },
     "comments": {
       "patterns": [
         {
@@ -33,12 +42,13 @@
               "begin": "^\\s*@exc\\s*$",
               "end": "^\\s*\\.exc\\s*$",
               "beginCaptures": {
-                "0": { "name": "comment.line.drift" }
+                "0": { "name": "invalid.illegal.drift" }
               },
               "endCaptures": {
-                "0": { "name": "comment.line.drift" }
+                "0": { "name": "invalid.illegal.drift" }
               },
               "patterns": [
+                { "include": "#excMarkers" },
                 { "include": "#strings" },
                 { "include": "#chars" },
                 { "include": "#numbers" },

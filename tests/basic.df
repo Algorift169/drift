@@ -5,7 +5,7 @@ var num = ask "Enter a number: {@num}"
 if num & 1 == false:
     say "The number {num} is even\n"
 else:
-    say "The number {num} is odd\n"
+    say "The number {num} is odd\n" 
 .exc
 at line 5, num & 1 == 0 will give the same result but we 
 gonna use the boolean value of the expression to check if 

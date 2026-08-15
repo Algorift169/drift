@@ -35,6 +35,47 @@ static char *trim_line(const char *line, size_t line_len)
     return result;
 }
 
+static char *strip_line_comment(const char *line)
+{
+    size_t i = 0;
+    int in_single_quote = 0;
+    int in_double_quote = 0;
+    char *result;
+
+    if (line == NULL) {
+        return NULL;
+    }
+
+    while (line[i] != '\0') {
+        char c = line[i];
+        if (c == '\\' && in_double_quote && line[i + 1] != '\0') {
+            i += 2;
+            continue;
+        }
+        if (c == '\\' && in_single_quote && line[i + 1] != '\0') {
+            i += 2;
+            continue;
+        }
+        if (c == '"' && !in_single_quote) {
+            in_double_quote = !in_double_quote;
+            i++;
+            continue;
+        }
+        if (c == '\'' && !in_double_quote) {
+            in_single_quote = !in_single_quote;
+            i++;
+            continue;
+        }
+        if (c == '/' && line[i + 1] == '/' && !in_single_quote && !in_double_quote) {
+            break;
+        }
+        i++;
+    }
+
+    result = trim_line(line, i);
+    return result;
+}
+
 /* Check if current position starts a block comment closing sequence */
 static int check_block_end(const char *source, size_t pos, size_t len)
 {
@@ -103,17 +144,22 @@ char *extract_executable_from_exc_blocks(const char *source)
         char *trimmed = trim_line(source + line_start, line_end - line_start);
 
         if (trimmed) {
+            char *code_line = NULL;
             if (is_exc_marker(trimmed, "@exc")) {
                 in_exc_block = 1;
             } else if (is_exc_marker(trimmed, ".exc")) {
                 in_exc_block = 0;
             } else if (in_exc_block && trimmed[0] != '\0') {
-                if (result_idx > 0 && result[result_idx - 1] != '\n') {
+                code_line = strip_line_comment(trimmed);
+                if (code_line != NULL && code_line[0] != '\0') {
+                    if (result_idx > 0 && result[result_idx - 1] != '\n') {
+                        result[result_idx++] = '\n';
+                    }
+                    strcpy(&result[result_idx], code_line);
+                    result_idx += strlen(code_line);
                     result[result_idx++] = '\n';
                 }
-                strcpy(&result[result_idx], trimmed);
-                result_idx += strlen(trimmed);
-                result[result_idx++] = '\n';
+                free(code_line);
             }
             free(trimmed);
         }
