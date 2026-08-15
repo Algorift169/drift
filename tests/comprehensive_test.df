@@ -1,0 +1,110 @@
+say "========== COMPREHENSIVE DRIFT TEST =========="
+say ""
+
+say "--- TEST 1: Literals and Variables ---"
+var x = 10
+var y = 3.14
+var name = "Test"
+var active = true
+say x
+say y
+say name
+say active
+say ""
+
+say "--- TEST 2: String Interpolation ---"
+var greeting = "Hello"
+var world = "Drift"
+say "This is {greeting} {world}"
+say ""
+
+say "--- TEST 3: Arithmetic Operations ---"
+var a = 10
+a = a + 5
+say a
+var b = 20
+b = b - 8
+say b
+var c = 6
+c = c * 4
+say c
+var d = 100
+d = d / 10
+say d
+var e = 17
+e = e % 5
+say e
+say ""
+
+say "--- TEST 4: Comparison Results ---"
+var res1 = true
+say res1
+var res2 = false
+say res2
+say ""
+
+say "--- TEST 5: Logical Operations ---"
+var t = true
+var f = false
+var res3 = true
+res3 = t && f
+say res3
+var res4 = true
+res4 = t || f
+say res4
+var res5 = false
+res5 = !t
+say res5
+say ""
+
+say "--- TEST 6: Bitwise Operations ---"
+var bit1 = 5
+bit1 = bit1 & 3
+say bit1
+var bit2 = 5
+bit2 = bit2 | 3
+say bit2
+var bit3 = 8
+bit3 = bit3 << 1
+say bit3
+say ""
+
+say "--- TEST 7: Increment/Decrement ---"
+var counter = 5
+counter++
+say counter
+counter--
+say counter
+say ""
+
+say "--- TEST 8: Compound Assignment ---"
+var val = 10
+val += 5
+say val
+val -= 3
+say val
+val *= 2
+say val
+val /= 4
+say val
+say ""
+
+say "--- TEST 9: Arrays and Indexing ---"
+var arr[] = {1, 2, 3, 4, 5}
+say arr[0]
+say arr[2]
+say arr[4]
+say ""
+
+say "--- TEST 10: Multidimensional Arrays ---"
+var matrix[][] = {1,2}{3,4}
+say matrix[0][0]
+say matrix[1][1]
+say ""
+
+say "--- TEST 11: Comments Work ---"
+var commented = 42
+say commented
+say ""
+
+say "========== ALL TESTS COMPLETE =========="
