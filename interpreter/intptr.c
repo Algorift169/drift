@@ -376,18 +376,18 @@ static int token_precedence(TokenType type)
             return 4;
         case TOKEN_CARET:
             return 5;
-        case TOKEN_AMPERSAND:
-            return 6;
         case TOKEN_EQUAL_EQUAL:
         case TOKEN_NOT_EQUAL:
-            return 7;
+            return 6;
         case TOKEN_GREATER:
         case TOKEN_LESS:
         case TOKEN_GREATER_EQUAL:
         case TOKEN_LESS_EQUAL:
-            return 8;
+            return 7;
         case TOKEN_SHIFT_LEFT:
         case TOKEN_SHIFT_RIGHT:
+            return 8;
+        case TOKEN_AMPERSAND:
             return 9;
         case TOKEN_PLUS:
         case TOKEN_MINUS:
