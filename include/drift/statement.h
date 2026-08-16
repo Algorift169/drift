@@ -22,7 +22,8 @@ typedef enum {
     STATEMENT_PRINT,
     STATEMENT_VARIABLE_DECLARATION,
     STATEMENT_INPUT,
-    STATEMENT_IF
+    STATEMENT_IF,
+    STATEMENT_REPEAT
 } StatementType;
 
 typedef struct Statement {
@@ -32,6 +33,7 @@ typedef struct Statement {
         VariableDeclaration variable_declaration;
         InputStatement input_statement;
         IfStatement if_statement;
+        RepeatStatement repeat_statement;
     } as;
 } Statement;
 

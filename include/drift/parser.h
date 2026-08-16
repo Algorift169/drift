@@ -16,7 +16,9 @@ typedef struct Parser {
 Parser parser_create(Token *tokens, size_t count);
 Statement parser_parse(Parser *parser);
 int parse_if_statement(Parser *parser, Statement *statement);
+int parse_repeat_statement(Parser *parser, Statement *statement);
 void if_statement_free(IfStatement *statement);
+void repeat_statement_free(RepeatStatement *statement);
 void print_statement_free(PrintStatement *statement);
 void variable_declaration_free(VariableDeclaration *declaration);
 

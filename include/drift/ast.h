@@ -49,4 +49,18 @@ typedef struct {
     size_t count;
 } InputStatement;
 
+typedef struct {
+    char *counter_name;
+    int has_range;
+    int has_step;
+    int is_infinite;
+    int is_exclusive_upper;
+    int is_exclusive_lower;
+    char *start_text;
+    char *end_text;
+    char *step_text;
+    struct Statement *body;
+    size_t body_count;
+} RepeatStatement;
+
 #endif

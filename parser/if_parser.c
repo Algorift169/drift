@@ -79,6 +79,8 @@ static void free_statement_list(Statement *body, size_t count)
             }
         } else if (body[i].type == STATEMENT_IF) {
             if_statement_free(&body[i].as.if_statement);
+        } else if (body[i].type == STATEMENT_REPEAT) {
+            repeat_statement_free(&body[i].as.repeat_statement);
         }
     }
 

@@ -10,6 +10,8 @@ typedef enum {
     TOKEN_IF,
     TOKEN_ELIF,
     TOKEN_ELSE,
+    TOKEN_REPEAT,
+    TOKEN_END,
     TOKEN_AT,
     TOKEN_IN,
     TOKEN_IDENTIFIER,

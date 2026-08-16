@@ -1,0 +1,23 @@
+var n = 5
+var i
+repeat i (0..<n, i++):
+    say n + i
+end
+
+say "========================"
+repeat i (n...0, i--):
+    say i
+end
+
+say "========================"
+
+var x=0, y=10
+repeat var j (y..>x, j-3):
+    say j
+end
+
+say "========================"
+var a=0, b=10
+repeat var j (a..<b, j+2):
+    say j
+end

@@ -1354,6 +1354,13 @@ Statement parser_parse(Parser *parser)
         return statement;
     }
 
+    if (token->type == TOKEN_REPEAT) {
+        if (!parse_repeat_statement(parser, &statement)) {
+            return statement;
+        }
+        return statement;
+    }
+
     if (token->type == TOKEN_VAR) {
         parser_advance(parser);
         variable_declaration.vars = NULL;

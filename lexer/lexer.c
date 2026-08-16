@@ -115,6 +115,16 @@ static Token read_identifier(Lexer *lexer)
         return make_token(TOKEN_ELSE, drift_duplicate_string("else"));
     }
 
+    if (strcmp(value, "repeat") == 0) {
+        free(value);
+        return make_token(TOKEN_REPEAT, drift_duplicate_string("repeat"));
+    }
+
+    if (strcmp(value, "end") == 0) {
+        free(value);
+        return make_token(TOKEN_END, drift_duplicate_string("end"));
+    }
+
     if (strcmp(value, "true") == 0 || strcmp(value, "TRUE") == 0) {
         free(value);
         return make_token(TOKEN_TRUE, drift_duplicate_string("true"));
@@ -145,16 +155,29 @@ static Token read_number(Lexer *lexer)
     char *value;
     size_t length = 0;
 
-    while (lexer->index < lexer->length && (isdigit((unsigned char)lexer->source[lexer->index]) || lexer->source[lexer->index] == '.')) {
-        if (lexer->source[lexer->index] == '.') {
+    while (lexer->index < lexer->length) {
+        char c = lexer->source[lexer->index];
+        if (isdigit((unsigned char)c)) {
+            lexer->index++;
+            length++;
+            continue;
+        }
+
+        if (c == '.') {
             if (has_decimal) {
                 fprintf(stderr, "Syntax Error: Invalid number literal.\n");
                 return make_token(TOKEN_UNKNOWN, NULL);
             }
+            if (lexer->index + 1 < lexer->length && lexer->source[lexer->index + 1] == '.') {
+                break;
+            }
             has_decimal = 1;
+            lexer->index++;
+            length++;
+            continue;
         }
-        lexer->index++;
-        length++;
+
+        break;
     }
 
     value = (char *)malloc(length + 1U);

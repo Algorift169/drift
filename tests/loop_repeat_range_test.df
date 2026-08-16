@@ -1,0 +1,4 @@
+var n = 3
+repeat var i (0...n):
+    say i
+end

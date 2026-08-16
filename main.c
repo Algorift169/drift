@@ -155,6 +155,8 @@ static void statement_free(Statement *statement)
         }
     } else if (statement->type == STATEMENT_IF) {
         if_statement_free(&statement->as.if_statement);
+    } else if (statement->type == STATEMENT_REPEAT) {
+        repeat_statement_free(&statement->as.repeat_statement);
     }
 }
 
