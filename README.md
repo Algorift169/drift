@@ -117,8 +117,23 @@ else :
 ├── token/
 ├── interpreter/
 ├── docs/
+├── tests/
+│   ├── arrays/
+│   ├── basic/
+│   ├── comments/
+│   ├── errors/
+│   ├── if-else/
+│   ├── input/
+│   ├── integration/
+│   ├── loop/
+│   ├── operators/
+│   └── variables/
 └── build/
 ```
+
+Tests are grouped under `tests/` by language feature. Input tests may require
+interactive input, and the files under `tests/errors/` intentionally contain
+invalid programs.
 
 ## Documentation
 
