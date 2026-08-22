@@ -3,7 +3,7 @@ CFLAGS = -std=c99 -Wall -Wextra -pedantic -Iinclude
 BUILD_DIR = build
 TARGET = $(BUILD_DIR)/drift
 
-SRCS = main.c token/token.c lexer/lexer.c lexer/logical_keywords.c lexer/identity_keywords.c lexer/comments.c lexer/executable_comments.c parser/parser.c parser/if_parser.c parser/repeat_parser.c parser/array_parser.c parser/select_parser.c interpreter/value.c interpreter/environment.c interpreter/input.c interpreter/intptr.c interpreter/array_value.c interpreter/array.c interpreter/operator.c interpreter/operator_identity.c
+SRCS = main.c token/token.c lexer/core/lexer.c lexer/keywords/logical_keywords.c lexer/keywords/identity_keywords.c lexer/comments/comments.c lexer/comments/executable_comments.c parser/core/parser.c parser/control_flow/if_parser.c parser/control_flow/repeat_parser.c parser/arrays/array_parser.c parser/arrays/select_parser.c interpreter/core/value.c interpreter/core/environment.c interpreter/core/input.c interpreter/core/intptr.c interpreter/arrays/array_value.c interpreter/arrays/array.c interpreter/operators/operator.c interpreter/operators/operator_identity.c
 OBJS = $(SRCS:%.c=$(BUILD_DIR)/%.o)
 
 all: $(TARGET)

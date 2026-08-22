@@ -113,9 +113,18 @@ else :
 ├── Makefile
 ├── include/
 ├── lexer/
+│   ├── comments/
+│   ├── core/
+│   └── keywords/
 ├── parser/
+│   ├── arrays/
+│   ├── control_flow/
+│   └── core/
 ├── token/
 ├── interpreter/
+│   ├── arrays/
+│   ├── core/
+│   └── operators/
 ├── docs/
 ├── tests/
 │   ├── arrays/
