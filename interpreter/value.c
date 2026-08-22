@@ -13,6 +13,7 @@ Value value_create_integer(long value)
     result.float_value = 0.0;
     result.string_value = NULL;
     result.boolean_value = 0;
+    result.identity = result.string_value;
     return result;
 }
 
@@ -24,6 +25,7 @@ Value value_create_float(double value)
     result.float_value = value;
     result.string_value = NULL;
     result.boolean_value = 0;
+    result.identity = NULL;
     return result;
 }
 
@@ -44,6 +46,8 @@ Value value_create_string(const char *value)
         }
     }
 
+    result.identity = result.string_value;
+
     return result;
 }
 
@@ -55,6 +59,7 @@ Value value_create_boolean(int value)
     result.float_value = 0.0;
     result.string_value = NULL;
     result.boolean_value = value;
+    result.identity = NULL;
     return result;
 }
 
@@ -66,6 +71,7 @@ Value value_create_null(void)
     result.float_value = 0.0;
     result.string_value = NULL;
     result.boolean_value = 0;
+    result.identity = NULL;
     return result;
 }
 
@@ -77,6 +83,7 @@ Value value_create_infinity(void)
     result.float_value = INFINITY;
     result.string_value = NULL;
     result.boolean_value = 0;
+    result.identity = NULL;
     return result;
 }
 
@@ -89,6 +96,7 @@ Value value_create_array(ArrayValue *value)
     result.string_value = NULL;
     result.boolean_value = 0;
     result.array_value = value;
+    result.identity = value;
     return result;
 }
 
@@ -109,6 +117,7 @@ Value value_copy(const Value *value)
             break;
         case VALUE_STRING:
             result = value_create_string(value->string_value);
+            result.identity = value->identity;
             break;
         case VALUE_BOOLEAN:
             result = value_create_boolean(value->boolean_value);
@@ -126,6 +135,7 @@ Value value_copy(const Value *value)
             result.float_value = 0.0;
             result.string_value = NULL;
             result.boolean_value = 0;
+            result.identity = value->identity;
             break;
         default:
             result = value_create_string(NULL);
@@ -152,4 +162,5 @@ void value_free(Value *value)
     value->integer_value = 0;
     value->float_value = 0.0;
     value->boolean_value = 0;
+    value->identity = NULL;
 }

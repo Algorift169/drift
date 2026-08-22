@@ -14,6 +14,7 @@ typedef enum {
     TOKEN_END,
     TOKEN_AT,
     TOKEN_IN,
+    TOKEN_IS,
     TOKEN_IDENTIFIER,
     TOKEN_EQUAL,
     TOKEN_PLUS,

@@ -4,6 +4,7 @@
 #include <string.h>
 
 #include "drift/comments.h"
+#include "drift/identity_keywords.h"
 #include "drift/logical_keywords.h"
 #include "drift/lexer.h"
 
@@ -149,6 +150,11 @@ static Token read_identifier(Lexer *lexer)
     TokenType logical_type = logical_keyword_token_type(value);
     if (logical_type != TOKEN_UNKNOWN) {
         return make_token(logical_type, value);
+    }
+
+    TokenType identity_type = identity_keyword_token_type(value);
+    if (identity_type != TOKEN_UNKNOWN) {
+        return make_token(identity_type, value);
     }
 
     return make_token(TOKEN_IDENTIFIER, value);

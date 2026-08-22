@@ -39,10 +39,12 @@ typedef enum {
     OPERATOR_INCREMENT,
     OPERATOR_DECREMENT,
     OPERATOR_RANGE,
-    OPERATOR_IN
+    OPERATOR_IN,
+    OPERATOR_IS
 } OperatorType;
 
 Value operator_apply(OperatorType op, const Value *left, const Value *right);
+Value operator_apply_identity(const Value *left, const Value *right);
 int operator_is_comparison(OperatorType op);
 int operator_is_logical(OperatorType op);
 int operator_is_bitwise(OperatorType op);

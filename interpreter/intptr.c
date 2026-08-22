@@ -487,6 +487,8 @@ static int token_precedence(TokenType type)
             return 11;
         case TOKEN_IN:
             return 12;
+        case TOKEN_IS:
+            return 6;
         default:
             return -1;
     }
@@ -629,6 +631,8 @@ static Value evaluate_expression_tokens(Environment *environment, Token *tokens,
 
         if (op == TOKEN_IN) {
             left = operator_apply(OPERATOR_IN, &left, &right);
+        } else if (op == TOKEN_IS) {
+            left = operator_apply(OPERATOR_IS, &left, &right);
         } else if (op == TOKEN_RANGE) {
             left = operator_apply(OPERATOR_RANGE, &left, &right);
         } else if (op == TOKEN_PLUS) {

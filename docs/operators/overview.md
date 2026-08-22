@@ -22,6 +22,8 @@ This document summarizes the operator families implemented in Drift. The interpr
    - `[]`, `.`
 9. Membership
    - `in`
+10. Identity
+   - `is`
 
 ## Evaluation model
 

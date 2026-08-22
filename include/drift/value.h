@@ -20,6 +20,7 @@ typedef struct Value {
     char *string_value;
     int boolean_value;
     ArrayValue *array_value;
+    const void *identity;
 } Value;
 
 Value value_create_integer(long value);

@@ -53,6 +53,8 @@ Value operator_apply(OperatorType op, const Value *left, const Value *right)
         return operator_apply_range(op, left, right);
     } else if (op == OPERATOR_IN) {
         return operator_apply_membership(op, left, right);
+    } else if (op == OPERATOR_IS) {
+        return operator_apply_identity(left, right);
     }
 
     return value_create_null();

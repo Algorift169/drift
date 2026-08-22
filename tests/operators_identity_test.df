@@ -1,0 +1,16 @@
+// Identity compares object identity, not value equality.
+var original = "same object"
+var alias = original
+var separate = "same object"
+
+say original is original
+say original is alias
+say original is separate
+say original == separate
+
+var first_array = [1, 2, 3]
+var array_alias = first_array
+var separate_array = [1, 2, 3]
+
+say first_array is array_alias
+say first_array is separate_array
