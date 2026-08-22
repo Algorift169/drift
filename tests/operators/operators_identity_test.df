@@ -14,3 +14,13 @@ var separate_array = [1, 2, 3]
 
 say first_array is array_alias
 say first_array is separate_array
+
+/*
+expected output:
+true
+true
+false
+true
+true
+false
+*/
