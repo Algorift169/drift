@@ -1,0 +1,5 @@
+var name = "name"
+
+repeat var i (0...1000):
+    say "{i}{name} \n"
+end
