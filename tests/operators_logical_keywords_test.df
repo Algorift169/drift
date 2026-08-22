@@ -1,0 +1,19 @@
+// Logical keyword operators: and or not
+var a = true and true
+say a
+
+var b = true and false
+say b
+
+var c = true or false
+say c
+
+var d = not true
+say d
+
+var e = not false
+say e
+
+// Keywords use the same precedence as their symbolic operators.
+var f = false or true and false
+say f

@@ -4,6 +4,7 @@
 #include <string.h>
 
 #include "drift/comments.h"
+#include "drift/logical_keywords.h"
 #include "drift/lexer.h"
 
 static int is_space(char c)
@@ -143,6 +144,11 @@ static Token read_identifier(Lexer *lexer)
     if (strcmp(value, "INF") == 0 || strcmp(value, "inf") == 0) {
         free(value);
         return make_token(TOKEN_INFINITY, drift_duplicate_string("INF"));
+    }
+
+    TokenType logical_type = logical_keyword_token_type(value);
+    if (logical_type != TOKEN_UNKNOWN) {
+        return make_token(logical_type, value);
     }
 
     return make_token(TOKEN_IDENTIFIER, value);

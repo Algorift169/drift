@@ -6,6 +6,16 @@ Drift supports the following logical operators:
 - `||` logical OR
 - `!` logical NOT
 
+It also supports the following word-based aliases:
+
+- `and` for `&&`
+- `or` for `||`
+- `not` for `!`
+
+The aliases use the same token types, precedence, truthiness rules, and
+evaluation behavior as their symbolic equivalents. See
+[`logical_keywords.md`](logical_keywords.md) for the implementation details.
+
 ## Syntax
 
 ```drift
@@ -14,6 +24,10 @@ var b = true && false
 var c = true || false
 var d = !true
 var e = !false
+
+var f = true and true
+var g = false or true
+var h = not false
 ```
 
 ## Behavior
@@ -26,6 +40,9 @@ Logical operators evaluate to booleans. Numeric values are treated as truthy or 
 say true && false
 say true || false
 say !false
+say true and true
+say false or true
+say not false
 ```
 
 ## Output
