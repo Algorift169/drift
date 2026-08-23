@@ -499,6 +499,9 @@ Token *lexer_scan_all(Lexer *lexer, size_t *token_count)
         } else if (lexer->source[lexer->index] == '~') {
             tokens[count++] = make_token(TOKEN_TILDA, drift_duplicate_string("~"));
             lexer->index++;
+        } else if (lexer->source[lexer->index] == '?') {
+            tokens[count++] = make_token(TOKEN_QUESTION, drift_duplicate_string("?"));
+            lexer->index++;
         } else if (lexer->source[lexer->index] == '.') {
             if (lexer->index + 2 < lexer->length && lexer->source[lexer->index + 1] == '.' && lexer->source[lexer->index + 2] == '.') {
                 tokens[count++] = make_token(TOKEN_RANGE, drift_duplicate_string("..."));

@@ -24,6 +24,8 @@ This document summarizes the operator families implemented in Drift. The interpr
    - `in`
 10. Identity
    - `is`
+11. Ternary
+   - `? :`
 
 ## Evaluation model
 

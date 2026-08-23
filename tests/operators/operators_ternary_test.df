@@ -1,0 +1,11 @@
+var age = 20
+var status = age >= 18 ? "Adult" : "Minor"
+say status
+
+var a = 10
+var b = 20
+var max = a > b ? a : b
+say "max: \n{max}"
+
+var nested = false ? "outer" : true ? "inner" : "fallback"
+say "nested: \n{nested}\n"

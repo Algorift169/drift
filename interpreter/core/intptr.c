@@ -8,6 +8,7 @@
 #include "drift/input.h"
 #include "drift/interpreter.h"
 #include "drift/lexer.h"
+#include "drift/operator_ternary.h"
 #include "drift/parser.h"
 
 typedef struct {
@@ -455,40 +456,42 @@ static Value resolve_identifier_or_literal(Environment *environment, Token *toke
 static int token_precedence(TokenType type)
 {
     switch (type) {
-        case TOKEN_RANGE:
+        case TOKEN_QUESTION:
             return 1;
-        case TOKEN_OR_OR:
+        case TOKEN_RANGE:
             return 2;
-        case TOKEN_AND_AND:
+        case TOKEN_OR_OR:
             return 3;
-        case TOKEN_PIPE:
+        case TOKEN_AND_AND:
             return 4;
-        case TOKEN_CARET:
+        case TOKEN_PIPE:
             return 5;
+        case TOKEN_CARET:
+            return 6;
         case TOKEN_EQUAL_EQUAL:
         case TOKEN_NOT_EQUAL:
-            return 6;
+            return 7;
         case TOKEN_GREATER:
         case TOKEN_LESS:
         case TOKEN_GREATER_EQUAL:
         case TOKEN_LESS_EQUAL:
-            return 7;
+            return 8;
         case TOKEN_SHIFT_LEFT:
         case TOKEN_SHIFT_RIGHT:
-            return 8;
-        case TOKEN_AMPERSAND:
             return 9;
+        case TOKEN_AMPERSAND:
+            return 10;
         case TOKEN_PLUS:
         case TOKEN_MINUS:
-            return 10;
+            return 11;
         case TOKEN_STAR:
         case TOKEN_SLASH:
         case TOKEN_PERCENT:
-            return 11;
-        case TOKEN_IN:
             return 12;
+        case TOKEN_IN:
+            return 13;
         case TOKEN_IS:
-            return 6;
+            return 7;
         default:
             return -1;
     }
@@ -607,6 +610,9 @@ static Value evaluate_expression_tokens(Environment *environment, Token *tokens,
 
     while (*index < count) {
         TokenType op = tokens[*index].type;
+        if (op == TOKEN_COLON) {
+            break;
+        }
         if (op == TOKEN_TILDA) {
             fprintf(stderr, "Runtime Error: Bitwise NOT is unary and must be written as '~value'.\n");
             *ok = 0;
@@ -619,6 +625,34 @@ static Value evaluate_expression_tokens(Environment *environment, Token *tokens,
         }
 
         (*index)++;
+
+        if (op == TOKEN_QUESTION) {
+            Value true_value = evaluate_expression_tokens(environment, tokens, count, index, 0, ok);
+            Value false_value;
+
+            if (!*ok || *index >= count || tokens[*index].type != TOKEN_COLON) {
+                value_free(&true_value);
+                *ok = 0;
+                return left;
+            }
+
+            (*index)++;
+            false_value = evaluate_expression_tokens(environment, tokens, count, index, precedence, ok);
+            if (!*ok) {
+                value_free(&true_value);
+                return left;
+            }
+
+            {
+                Value selected = operator_apply_ternary(&left, &true_value, &false_value);
+                value_free(&left);
+                value_free(&true_value);
+                value_free(&false_value);
+                left = selected;
+            }
+            continue;
+        }
+
         if (*index >= count) {
             *ok = 0;
             return left;
