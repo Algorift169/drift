@@ -1,4 +1,5 @@
-/* Executable comments are filtered into source text so embedded code follows ordinary lexer ordering. */
+/* Executable comments are filtered into source text so embedded 
+code follows ordinary lexer ordering. */
 
 #include <stdio.h>
 #include <stdlib.h>
@@ -15,7 +16,10 @@ static int is_exc_marker(const char *line, const char *marker)
     return strcmp(line, marker) == 0;
 }
 
-/* Trim leading/trailing whitespace from a line */
+/* Trim leading/trailing whitespace from a line
+   and return a newly allocated string. Caller must free the result.
+   But if the line is empty or NULL, return an empty string. 
+*/
 static char *trim_line(const char *line, size_t line_len)
 {
     const char *start = line;
@@ -38,6 +42,11 @@ static char *trim_line(const char *line, size_t line_len)
     return result;
 }
 
+
+// Strips line comments from a line of code, preserving quoted 
+// strings. Returns a newly allocated string, or NULL on error. Caller
+// must free the result. If the line is empty or NULL, returns an 
+// empty string.
 static char *strip_line_comment(const char *line)
 {
     size_t i = 0;
@@ -89,6 +98,14 @@ static int check_block_end(const char *source, size_t pos, size_t len)
     return 0;
 }
 
+
+// There are two types of executable comments: @exc and .exc. 
+// @exc marks the start of an executable comment block, while .exc 
+// marks the end of an executable comment block. The function below extracts
+// the executable code from the source text, ignoring any non-executable
+// comments and whitespace. It returns a newly allocated string containing
+// the extracted code, or NULL on error. The caller is responsible for 
+// freeing the returned string.
 char *extract_executable_from_exc_blocks(const char *source)
 {
     size_t source_len;
@@ -132,6 +149,12 @@ char *extract_executable_from_exc_blocks(const char *source)
             line_end++;
         }
 
+        // If the block comment ends on the same line, 
+        // we need to check if the line contains an executable comment 
+        // If the block comment ends on the same line, we need to 
+        // check if the line contains an executable comment marker. If
+        // it does, we extract the code from that line. Otherwise, we skip 
+        // the line and continue to the next one.
         if (line_end < source_len && source[line_end] != '\n') {
             char *trimmed = trim_line(source + line_start, line_end - line_start);
             if (trimmed) {
@@ -145,6 +168,12 @@ char *extract_executable_from_exc_blocks(const char *source)
             continue;
         }
 
+        // If the block comment spans multiple lines, we need to check
+        // each line for executable comment markers. If we find an 
+        // @exc marker, we set the in_exc_block flag to true. If we find 
+        // a .exc marker, we set the in_exc_block flag to false. If we are
+        // in an executable comment block, we extract the code from that 
+        // line and append it to the result. Otherwise, we skip the line.
         char *trimmed = trim_line(source + line_start, line_end - line_start);
 
         if (trimmed) {
