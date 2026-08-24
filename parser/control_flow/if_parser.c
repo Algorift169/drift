@@ -1,4 +1,5 @@
-/* Conditional parsing builds an ordered branch chain; each recursive arm consumes exactly its own block. */
+/* Conditional parsing builds an ordered branch chain; each 
+recursive arm consumes exactly its own block. */
 
 #include <stdio.h>
 #include <stdlib.h>
@@ -8,6 +9,7 @@
 
 static Token *parser_peek(Parser *parser)
 {
+    // Look at the current token without changing the parser position.
     if (parser == NULL || parser->index >= parser->count) {
         return NULL;
     }
@@ -16,6 +18,7 @@ static Token *parser_peek(Parser *parser)
 
 static Token *parser_advance(Parser *parser)
 {
+    // Return the current token and move forward so the grammar can consume it.
     if (parser == NULL || parser->index >= parser->count) {
         return NULL;
     }
@@ -24,6 +27,8 @@ static Token *parser_advance(Parser *parser)
 
 static int parser_expect(Parser *parser, TokenType type, const char *message)
 {
+    /* Validate and consume one required grammar token. Centralizing this check
+       keeps missing delimiters consistent across all if branches. */
     Token *token = parser_peek(parser);
     if (token == NULL || token->type != type) {
         if (message != NULL) {
@@ -37,11 +42,14 @@ static int parser_expect(Parser *parser, TokenType type, const char *message)
 
 static int is_statement_terminator(Token *token)
 {
+    // Newlines and semicolons end a header expression in this parser.
     return token != NULL && (token->type == TOKEN_NEWLINE || token->type == TOKEN_SEMICOLON);
 }
 
 static void append_statement(Statement **items, size_t *count, size_t *capacity, Statement statement)
 {
+    /* Grow the statement list geometrically, then append the parsed statement.
+       The list owns the statement structures until the enclosing block is freed. */
     Statement *new_items;
 
     if (*count >= *capacity) {
@@ -60,6 +68,8 @@ static void append_statement(Statement **items, size_t *count, size_t *capacity,
 
 static void free_statement_list(Statement *body, size_t count)
 {
+    /* Statements are a tagged union, so dispatch to the matching destructor
+       before releasing the list that stores them. */
     if (body == NULL) {
         return;
     }
@@ -91,6 +101,8 @@ static void free_statement_list(Statement *body, size_t count)
 
 static void append_condition_token(char *result, size_t *length, Token *token)
 {
+    /* Rebuild source-like condition text from tokens. String tokens receive
+       quotes when the lexer stored only their contents. */
     if (result == NULL || length == NULL || token == NULL || token->value == NULL) {
         return;
     }
@@ -123,6 +135,8 @@ static void append_condition_token(char *result, size_t *length, Token *token)
 
 static char *read_expression_until_colon(Parser *parser)
 {
+    /* Collect the condition one token at a time until ':' or a statement
+       boundary. The interpreter later lexes this reconstructed expression. */
     size_t length = 0;
     char *result = NULL;
     Token *token;
@@ -161,6 +175,8 @@ static char *read_expression_until_colon(Parser *parser)
 
 static int parse_if_body(Parser *parser, Statement **out_body, size_t *out_count)
 {
+    /* Parse child statements until an elif/else marker or end of input. Those
+       structural markers are deliberately left unconsumed for the parent. */
     Statement *body = NULL;
     size_t body_count = 0;
     size_t capacity = 0;
@@ -202,6 +218,11 @@ static int parse_if_body(Parser *parser, Statement **out_body, size_t *out_count
 
 int parse_if_statement(Parser *parser, Statement *statement)
 {
+    /*
+    Build an ordered IfStatement: parse the initial if branch, collect each
+    following elif branch, and optionally attach one else body. Each branch
+    owns its condition string and parsed statement list.
+    */
     IfStatement if_statement;
     IfBranch branch;
     Statement *body = NULL;
@@ -213,6 +234,7 @@ int parse_if_statement(Parser *parser, Statement *statement)
     }
 
     memset(&if_statement, 0, sizeof(if_statement));
+    // The caller positioned the parser on 'if'; consume that keyword first.
     parser_advance(parser);
 
     branch.condition_text = NULL;
@@ -261,6 +283,7 @@ int parse_if_statement(Parser *parser, Statement *statement)
         }
 
         if (token->type == TOKEN_ELIF) {
+            // Every elif repeats the same condition, colon, and body sequence.
             IfBranch next_branch;
             Statement *next_body = NULL;
             size_t next_body_count = 0;
@@ -302,6 +325,7 @@ int parse_if_statement(Parser *parser, Statement *statement)
         }
 
         if (token->type == TOKEN_ELSE) {
+            // Else has no condition and is parsed only after all elif branches.
             Statement *else_body = NULL;
             size_t else_count = 0;
             parser_advance(parser);
@@ -328,6 +352,8 @@ int parse_if_statement(Parser *parser, Statement *statement)
 
 void if_statement_free(IfStatement *statement)
 {
+    /* Release branch conditions and recursively release every nested statement
+       body, including the optional else body. */
     if (statement == NULL) {
         return;
     }

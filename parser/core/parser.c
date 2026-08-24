@@ -1,4 +1,5 @@
-/* Expression parsing uses recursive precedence levels so tighter operators bind before outer operators. */
+/* Expression parsing uses recursive precedence levels so 
+tighter operators bind before outer operators. */
 
 #include <ctype.h>
 #include <stdio.h>
@@ -11,6 +12,7 @@
 
 static Token *parser_peek(Parser *parser)
 {
+    // Look ahead without consuming input; NULL means the cursor reached the token array end.
     if (parser->index >= parser->count) {
         return NULL;
     }
@@ -20,6 +22,7 @@ static Token *parser_peek(Parser *parser)
 
 static Token *parser_advance(Parser *parser)
 {
+    // Return the current token and move the cursor forward by one position.
     if (parser->index >= parser->count) {
         return NULL;
     }
@@ -29,6 +32,8 @@ static Token *parser_advance(Parser *parser)
 
 static int parser_expect(Parser *parser, TokenType type, const char *message)
 {
+    /* A grammar rule calls this when a specific delimiter is mandatory. The
+       token is consumed only after its type has been validated. */
     Token *token = parser_peek(parser);
     if (token == NULL || token->type != type) {
         if (message != NULL) {
@@ -42,11 +47,14 @@ static int parser_expect(Parser *parser, TokenType type, const char *message)
 
 static int is_statement_terminator(Token *token)
 {
+    // Newlines and semicolons separate statements from their following input.
     return token != NULL && (token->type == TOKEN_NEWLINE || token->type == TOKEN_SEMICOLON);
 }
 
 static int is_assignment_operator_token(TokenType type)
 {
+    /* Recognize every operator that begins an assignment statement, including
+       compound, bitwise, increment, and decrement forms. */
     return type == TOKEN_EQUAL || type == TOKEN_PLUS_EQUAL || type == TOKEN_MINUS_EQUAL ||
            type == TOKEN_STAR_EQUAL || type == TOKEN_SLASH_EQUAL || type == TOKEN_PERCENT_EQUAL ||
            type == TOKEN_AMPERSAND_EQUAL || type == TOKEN_PIPE_EQUAL || type == TOKEN_CARET_EQUAL ||
@@ -56,6 +64,9 @@ static int is_assignment_operator_token(TokenType type)
 
 static int is_top_level_expression_boundary(Token *token, int paren_depth, int bracket_depth, int brace_depth)
 {
+    /* A comma ends an expression only at the outermost nesting level. This
+       prevents commas inside calls, arrays, or grouped expressions from
+       prematurely splitting the expression. */
     if (token == NULL) {
         return 1;
     }
@@ -73,6 +84,9 @@ static int is_top_level_expression_boundary(Token *token, int paren_depth, int b
 
 static int is_array_element_assignment(Parser *parser, size_t start)
 {
+    /* Look ahead from an identifier for one or more [index] selectors followed
+       by '='. This distinguishes element mutation from array declarations or
+       ordinary identifier assignments before either path consumes tokens. */
     size_t index = start + 1U;
     int has_index = 0;
     while (index < parser->count && parser->tokens[index].type == TOKEN_LEFT_BRACKET) {
@@ -95,6 +109,8 @@ static int is_array_element_assignment(Parser *parser, size_t start)
 
 static int is_identifier_valid(const char *name)
 {
+    /* Drift identifiers begin with a letter, '_' or '-' and may contain digits
+       after the first character. */
     size_t i;
 
     if (name == NULL || name[0] == '\0') {
@@ -126,6 +142,8 @@ static void append_expression_token(char *expression_text, Token *token);
 
 static Value parse_literal_value(Token *token)
 {
+    /* Convert one literal token into an owned runtime Value. This function is
+       used where declarations require literal values instead of expressions. */
     if (token == NULL) {
         return value_create_string(NULL);
     }
@@ -182,6 +200,11 @@ static Value parse_literal_value(Token *token)
 
 static Value parse_array_literal_value(Parser *parser, int *error)
 {
+    /*
+    Parse bracket syntax such as [1, 2, [3, 4]]. Nested arrays recurse through
+    this same function, while the collected Values are passed to the dynamic
+    ArrayValue constructor after the closing bracket is verified.
+    */
     Value result = value_create_null();
     Value *values = NULL;
     size_t value_count = 0;
@@ -198,6 +221,7 @@ static Value parse_array_literal_value(Parser *parser, int *error)
     }
     parser_advance(parser);
 
+    // Collect elements temporarily because the final array needs one flat value list.
     while (parser_peek(parser) != NULL && parser_peek(parser)->type != TOKEN_RIGHT_BRACKET) {
         Token *token = parser_peek(parser);
         Value item = value_create_null();
@@ -208,6 +232,7 @@ static Value parse_array_literal_value(Parser *parser, int *error)
         }
 
         if (token->type == TOKEN_LEFT_BRACKET) {
+            // A nested '[' starts another array literal and produces one array Value.
             int nested_error = 0;
             item = parse_array_literal_value(parser, &nested_error);
             if (nested_error) {
@@ -217,6 +242,7 @@ static Value parse_array_literal_value(Parser *parser, int *error)
         } else if (token->type == TOKEN_IDENTIFIER || token->type == TOKEN_INTEGER || token->type == TOKEN_FLOAT ||
                    token->type == TOKEN_STRING || token->type == TOKEN_TRUE || token->type == TOKEN_FALSE ||
                    token->type == TOKEN_NULL || token->type == TOKEN_INFINITY) {
+            // Identifiers are accepted here as literal-token input for compatibility with the language grammar.
             item = parse_literal_value(token);
             parser_advance(parser);
         } else {
@@ -241,6 +267,7 @@ static Value parse_array_literal_value(Parser *parser, int *error)
 
         token = parser_peek(parser);
         if (token != NULL && token->type == TOKEN_COMMA) {
+            // Commas separate siblings; the next loop iteration parses the next element.
             parser_advance(parser);
         }
     }
@@ -258,6 +285,7 @@ static Value parse_array_literal_value(Parser *parser, int *error)
     }
 
     if (value_count == 0) {
+        // Empty brackets still produce a valid dynamic array with zero elements.
         ArrayValue *array = array_value_create_dynamic_from_values(VALUE_NULL, NULL, 0);
         result = value_create_array(array);
         free(values);
@@ -265,6 +293,7 @@ static Value parse_array_literal_value(Parser *parser, int *error)
     }
 
     ArrayValue *array = array_value_create_dynamic_from_values(element_type, values, value_count);
+    // The array constructor has copied the values, so release this temporary list.
     for (size_t i = 0; i < value_count; ++i) {
         value_free(&values[i]);
     }
@@ -275,6 +304,7 @@ static Value parse_array_literal_value(Parser *parser, int *error)
 
 Parser parser_create(Token *tokens, size_t count)
 {
+    // Initialize a parser at the first token; ownership of tokens stays with the caller.
     Parser parser;
     parser.tokens = tokens;
     parser.count = count;
@@ -284,6 +314,8 @@ Parser parser_create(Token *tokens, size_t count)
 
 static void variable_declaration_single_init(VariableDeclarationSingle *single)
 {
+    /* Reset every declaration field so later grammar branches can set only the
+       flags and payloads that apply to the current form. */
     single->name = NULL;
     single->value = value_create_null();
     single->is_declaration = 0;
@@ -303,6 +335,8 @@ static void variable_declaration_single_init(VariableDeclarationSingle *single)
 
 static void variable_declaration_single_free(VariableDeclarationSingle *single)
 {
+    /* Release all optional declaration payloads, including expression text and
+       array-access buffers, then clear pointers for safe repeated cleanup. */
     if (single == NULL) {
         return;
     }
@@ -323,6 +357,11 @@ static void variable_declaration_single_free(VariableDeclarationSingle *single)
 
 static int parse_single_declaration(Parser *parser, VariableDeclarationSingle *single, int is_declaration)
 {
+    /*
+    Parse one variable item after the caller has chosen declaration or
+    assignment mode. The function records syntax and source data in the AST;
+    expression values are intentionally evaluated later by the interpreter.
+    */
     Token *token = parser_peek(parser);
     if (token == NULL || token->type != TOKEN_IDENTIFIER) {
         if (is_declaration) {
@@ -339,6 +378,7 @@ static int parse_single_declaration(Parser *parser, VariableDeclarationSingle *s
     }
 
     single->name = drift_duplicate_string(token->value);
+    // Copy the identifier because lexer token storage is not owned by the AST.
     parser_advance(parser);
 
     single->is_declaration = is_declaration;
@@ -351,6 +391,7 @@ static int parse_single_declaration(Parser *parser, VariableDeclarationSingle *s
 
     token = parser_peek(parser);
     if (token == NULL || is_statement_terminator(token) || token->type == TOKEN_COMMA) {
+        // A declaration without a value receives null at execution time.
         single->value = value_create_null();
         return 1;
     }
@@ -359,6 +400,7 @@ static int parse_single_declaration(Parser *parser, VariableDeclarationSingle *s
         token->type == TOKEN_SLASH_EQUAL || token->type == TOKEN_PERCENT_EQUAL || token->type == TOKEN_AMPERSAND_EQUAL ||
         token->type == TOKEN_PIPE_EQUAL || token->type == TOKEN_CARET_EQUAL || token->type == TOKEN_SHIFT_LEFT_EQUAL ||
         token->type == TOKEN_SHIFT_RIGHT_EQUAL || token->type == TOKEN_PLUS_PLUS || token->type == TOKEN_MINUS_MINUS) {
+        // Record the compound operator before collecting its right-hand expression.
         single->is_assignment = 1;
         single->has_assignment_operator = 1;
         if (token->type == TOKEN_PLUS_EQUAL) {
@@ -389,6 +431,7 @@ static int parse_single_declaration(Parser *parser, VariableDeclarationSingle *s
 
         parser_advance(parser);
         if (token->type == TOKEN_PLUS_PLUS || token->type == TOKEN_MINUS_MINUS) {
+            // Postfix increment/decrement has no right-hand expression.
             single->value = value_create_null();
             return 1;
         }
@@ -399,6 +442,7 @@ static int parse_single_declaration(Parser *parser, VariableDeclarationSingle *s
         int bracket_depth = 0;
         int brace_depth = 0;
 
+        // First scan calculates the required buffer size while tracking nesting.
         while (scan_index < parser->count) {
             Token *current = &parser->tokens[scan_index];
             if (is_top_level_expression_boundary(current, paren_depth, bracket_depth, brace_depth)) {
@@ -438,6 +482,7 @@ static int parse_single_declaration(Parser *parser, VariableDeclarationSingle *s
         }
         single->expression_text[0] = '\0';
 
+        // Second scan copies the same token span into executable expression text.
         while (parser->index < parser->count) {
             Token *tok = &parser->tokens[parser->index];
             if (is_top_level_expression_boundary(tok, paren_depth, bracket_depth, brace_depth)) {
@@ -475,6 +520,7 @@ static int parse_single_declaration(Parser *parser, VariableDeclarationSingle *s
     }
 
     if (is_array_element_assignment(parser, parser->index - 1U)) {
+        // Rewind to the identifier so the shared array-access parser can consume the full left side.
         single->is_declaration = 0;
         single->is_assignment = 1;
         single->is_array_element_assignment = 1;
@@ -500,6 +546,8 @@ static int parse_single_declaration(Parser *parser, VariableDeclarationSingle *s
     }
 
     if (token->type == TOKEN_LEFT_BRACKET) {
+        // '[' may begin either a literal array value or an array declaration;
+        // the following token distinguishes those two grammar forms.
         if (parser->index + 1 < parser->count && parser->tokens[parser->index + 1].type != TOKEN_INTEGER &&
             parser->tokens[parser->index + 1].type != TOKEN_RIGHT_BRACKET) {
             int parse_error = 0;
@@ -508,6 +556,7 @@ static int parse_single_declaration(Parser *parser, VariableDeclarationSingle *s
                 return 0;
             }
             single->is_assignment = 1;
+            // The parsed literal is already a complete Value, not deferred text.
             return 1;
         }
 
@@ -520,6 +569,7 @@ static int parse_single_declaration(Parser *parser, VariableDeclarationSingle *s
 
         token = parser_peek(parser);
         if (token != NULL && token->type == TOKEN_EQUAL) {
+            // A declaration may be initialized from a literal or an array access.
             parser_advance(parser);
             single->is_assignment = 1;
 
@@ -539,6 +589,7 @@ static int parse_single_declaration(Parser *parser, VariableDeclarationSingle *s
                                            (next_token->type == TOKEN_DOT && parser->index + 2 < parser->count &&
                                             parser->tokens[parser->index + 2].type == TOKEN_IDENTIFIER &&
                                             strcmp(parser->tokens[parser->index + 2].value, "select") == 0))) {
+                    // Array references are retained as access metadata for runtime resolution.
                     if (!parse_array_access(parser, &single->array_access)) {
                         return 0;
                     }
@@ -554,6 +605,7 @@ static int parse_single_declaration(Parser *parser, VariableDeclarationSingle *s
             }
         }
     } else if (token->type == TOKEN_EQUAL) {
+        // Scalar assignment chooses among input, array literal, array access, or expression text.
         parser_advance(parser);
         single->is_assignment = 1;
 
@@ -564,6 +616,7 @@ static int parse_single_declaration(Parser *parser, VariableDeclarationSingle *s
         }
 
         if (token->type == TOKEN_ASK) {
+            // The ask parser supplies prompt and target ownership to this declaration.
             Statement input_statement;
             if (!parse_ask_statement(parser, &input_statement)) {
                 return 0;
@@ -579,12 +632,14 @@ static int parse_single_declaration(Parser *parser, VariableDeclarationSingle *s
             }
             single->value = value_create_null();
             if (input_statement.as.input_statement.items != NULL) {
+                // Detach moved strings before the temporary InputStatement is discarded.
                 for (size_t i = 0; i < input_statement.as.input_statement.count; ++i) {
                     input_statement.as.input_statement.items[i].prompt = NULL;
                     input_statement.as.input_statement.items[i].target_name = NULL;
                 }
             }
         } else if (token->type == TOKEN_LEFT_BRACKET) {
+            // Bracket-starting right sides are parsed as nested array literals.
             int array_literal_error = 0;
             single->value = parse_array_literal_value(parser, &array_literal_error);
             if (array_literal_error) {
@@ -602,6 +657,7 @@ static int parse_single_declaration(Parser *parser, VariableDeclarationSingle *s
                                        (next_token->type == TOKEN_DOT && parser->index + 2 < parser->count &&
                                         parser->tokens[parser->index + 2].type == TOKEN_IDENTIFIER &&
                                         strcmp(parser->tokens[parser->index + 2].value, "select") == 0))) {
+                // An identifier followed by access syntax is deferred for runtime array resolution.
                 if (!parse_array_access(parser, &single->array_access)) {
                     return 0;
                 }
@@ -617,6 +673,7 @@ static int parse_single_declaration(Parser *parser, VariableDeclarationSingle *s
             int bracket_depth = 0;
             int brace_depth = 0;
 
+            // Scan once to measure the expression while respecting nested delimiters.
             while (scan_index < parser->count) {
                 Token *current = &parser->tokens[scan_index];
                 if (is_top_level_expression_boundary(current, paren_depth, bracket_depth, brace_depth)) {
@@ -656,6 +713,7 @@ static int parse_single_declaration(Parser *parser, VariableDeclarationSingle *s
             }
             single->expression_text[0] = '\0';
 
+            // Copy the measured expression and advance the real parser cursor.
             while (parser->index < parser->count) {
                 Token *tok = &parser->tokens[parser->index];
                 if (is_top_level_expression_boundary(tok, paren_depth, bracket_depth, brace_depth)) {
@@ -690,12 +748,14 @@ static int parse_single_declaration(Parser *parser, VariableDeclarationSingle *s
             }
             single->value = value_create_null();
         } else {
+            // Non-identifier right sides follow the same deferred expression path.
             size_t length = 0;
             size_t scan_index = parser->index;
             int paren_depth = 0;
             int bracket_depth = 0;
             int brace_depth = 0;
 
+            // Do not treat nested commas or terminators as the end of this expression.
             while (scan_index < parser->count) {
                 Token *current = &parser->tokens[scan_index];
                 if (is_top_level_expression_boundary(current, paren_depth, bracket_depth, brace_depth)) {
@@ -735,6 +795,7 @@ static int parse_single_declaration(Parser *parser, VariableDeclarationSingle *s
             }
             single->expression_text[0] = '\0';
 
+            // Rebuild the expression in the AST for later evaluation.
             while (parser->index < parser->count) {
                 Token *tok = &parser->tokens[parser->index];
                 if (is_top_level_expression_boundary(tok, paren_depth, bracket_depth, brace_depth)) {
@@ -779,6 +840,8 @@ static int parse_single_declaration(Parser *parser, VariableDeclarationSingle *s
 
 static void append_expression_token(char *expression_text, Token *token)
 {
+    /* Append one token in a form the evaluator can lex again. Unquoted string
+       token contents are wrapped in double quotes to preserve their type. */
     if (expression_text == NULL || token == NULL || token->value == NULL) {
         return;
     }
@@ -800,6 +863,8 @@ static void append_expression_token(char *expression_text, Token *token)
 
 static char *parse_prompt_or_string(Parser *parser)
 {
+    /* Read one prompt token and return a separately allocated string with
+       single-quote delimiters removed. */
     Token *token = parser_peek(parser);
     char *result = NULL;
 
@@ -830,6 +895,11 @@ static char *parse_prompt_or_string(Parser *parser)
 
 static char **extract_implicit_targets_from_prompt(char **prompt, size_t *out_count)
 {
+    /*
+    Recognize input placeholders such as {@name, @age} inside a prompt. The
+    placeholder text is removed from the displayed prompt, and each discovered
+    name is returned as an implicit input target.
+    */
     char *text;
     char *open;
     char *close;
@@ -863,6 +933,7 @@ static char **extract_implicit_targets_from_prompt(char **prompt, size_t *out_co
     }
 
     const char *p = open + 1;
+    // Skip separators and collect identifier-shaped names until the closing brace.
     while (p < close) {
         while (p < close && (isspace((unsigned char)*p) || *p == '@' || *p == ',')) {
             p++;
@@ -919,6 +990,11 @@ static char **extract_implicit_targets_from_prompt(char **prompt, size_t *out_co
 
 static int parse_ask_statement(Parser *parser, Statement *statement)
 {
+    /*
+    Parse ask into a list of input items. Each item may have a prompt, an
+    explicit @target, or both; placeholders in a prompt expand into multiple
+    items while sharing the displayed prompt with the first target.
+    */
     InputStatement input_statement;
     size_t item_count = 0;
     size_t item_capacity = 4;
@@ -935,6 +1011,7 @@ static int parse_ask_statement(Parser *parser, Statement *statement)
 
     parser_advance(parser);
 
+    // Continue collecting prompt/target pairs until the statement boundary.
     while (1) {
         InputItem item;
         char *prompt = NULL;
@@ -949,6 +1026,7 @@ static int parse_ask_statement(Parser *parser, Statement *statement)
 
         token = parser_peek(parser);
         if (token != NULL && token->type == TOKEN_STRING) {
+            // A string starts the prompt portion of the current input item.
             prompt = parse_prompt_or_string(parser);
             item.prompt = prompt;
             item.has_prompt = 1;
@@ -960,6 +1038,7 @@ static int parse_ask_statement(Parser *parser, Statement *statement)
             size_t target_count = 0;
             char **implicit_targets = extract_implicit_targets_from_prompt(&prompt, &target_count);
             if (implicit_targets != NULL && target_count > 0) {
+                // Placeholder targets become separate input records in source order.
                 item.prompt = NULL;
                 item.target_name = NULL;
                 item.has_prompt = 0;
@@ -997,6 +1076,7 @@ static int parse_ask_statement(Parser *parser, Statement *statement)
         }
 
         if (token != NULL && token->type == TOKEN_AT) {
+            // Explicit targets use '@' followed by an identifier.
             parser_advance(parser);
             token = parser_peek(parser);
             if (token == NULL || token->type != TOKEN_IDENTIFIER) {
@@ -1030,6 +1110,7 @@ static int parse_ask_statement(Parser *parser, Statement *statement)
         }
 
         if (item.has_prompt || item.has_target) {
+            // Append the completed item after all of its optional fields are known.
             if (item_count >= item_capacity) {
                 size_t new_capacity = item_capacity * 2U;
                 InputItem *new_items = (InputItem *)realloc(items, new_capacity * sizeof(InputItem));
@@ -1066,6 +1147,12 @@ static int parse_ask_statement(Parser *parser, Statement *statement)
     return 1;
 }
 
+/*
+Parse one top-level statement by inspecting its first token. The parser builds
+an AST statement rather than executing anything: say creates print data,
+assignments and var create declaration records, and control-flow keywords
+delegate to their specialized parsers.
+*/
 Statement parser_parse(Parser *parser)
 {
     Token *token;
@@ -1076,12 +1163,14 @@ Statement parser_parse(Parser *parser)
     variable_declaration.count = 0;
 
     token = parser_peek(parser);
+    // Ignore blank lines before deciding which statement grammar to enter.
     while (token != NULL && token->type == TOKEN_NEWLINE) {
         parser_advance(parser);
         token = parser_peek(parser);
     }
 
     if (token == NULL || token->type == TOKEN_EOF) {
+        // Return an empty print-shaped statement so callers receive a valid union value.
         statement.type = STATEMENT_PRINT;
         print_statement.value = NULL;
         print_statement.is_variable_reference = 0;
@@ -1092,6 +1181,7 @@ Statement parser_parse(Parser *parser)
     }
 
     if (token->type == TOKEN_SAY) {
+        // 'say' has three forms: a plain string, a variable/array reference, or an expression.
         parser_advance(parser);
         token = parser_peek(parser);
 
@@ -1111,6 +1201,7 @@ Statement parser_parse(Parser *parser)
         Token *next_token = (parser->index + 1 < parser->count) ? &parser->tokens[parser->index + 1] : NULL;
 
         if (token->type == TOKEN_STRING && (next_token == NULL || is_statement_terminator(next_token) || next_token->type == TOKEN_EOF)) {
+            // A standalone string is stored directly as printable text.
             print_statement.is_variable_reference = 0;
             print_statement.has_array_access = 0;
             print_statement.has_expression = 0;
@@ -1147,6 +1238,7 @@ Statement parser_parse(Parser *parser)
                                        (next_token->type == TOKEN_DOT && parser->index + 2 < parser->count &&
                                         parser->tokens[parser->index + 2].type == TOKEN_IDENTIFIER &&
                                         strcmp(parser->tokens[parser->index + 2].value, "select") == 0))) {
+                // Array access is accepted as a print statement only when no tokens follow it.
                 if (parse_array_access(parser, &print_statement.array_access)) {
                     Token *after_access = parser_peek(parser);
                     if (after_access != NULL && (is_statement_terminator(after_access) || after_access->type == TOKEN_EOF)) {
@@ -1165,6 +1257,7 @@ Statement parser_parse(Parser *parser)
                     array_access_free(&print_statement.array_access);
                 }
             } else if (next_token == NULL || is_statement_terminator(next_token) || next_token->type == TOKEN_EOF) {
+                // A lone identifier is a scalar variable reference.
                 print_statement.is_variable_reference = 1;
                 print_statement.has_array_access = 0;
                 print_statement.has_expression = 0;
@@ -1183,6 +1276,7 @@ Statement parser_parse(Parser *parser)
             }
         }
 
+        // Otherwise collect the complete expression and defer its evaluation.
         size_t start_index = parser->index;
         size_t length = 0;
         Token *current = parser_peek(parser);
@@ -1234,6 +1328,7 @@ Statement parser_parse(Parser *parser)
     }
 
     if (token->type == TOKEN_IDENTIFIER && is_array_element_assignment(parser, parser->index)) {
+        // Handle array element mutation before generic identifier assignment detection.
         VariableDeclarationSingle single;
         variable_declaration_single_init(&single);
         single.name = drift_duplicate_string(token->value);
@@ -1280,6 +1375,7 @@ Statement parser_parse(Parser *parser)
     if (token->type == TOKEN_IDENTIFIER && parser->index + 1 < parser->count &&
         (parser->tokens[parser->index + 1].type == TOKEN_EQUAL ||
          is_assignment_operator_token(parser->tokens[parser->index + 1].type))) {
+        // Parse one or more comma-separated assignment items.
         variable_declaration.vars = NULL;
         variable_declaration.count = 0;
 
@@ -1343,6 +1439,7 @@ Statement parser_parse(Parser *parser)
     }
 
     if (token->type == TOKEN_ASK) {
+        // Delegate input grammar to the ask-specific parser.
         if (!parse_ask_statement(parser, &statement)) {
             return statement;
         }
@@ -1350,6 +1447,7 @@ Statement parser_parse(Parser *parser)
     }
 
     if (token->type == TOKEN_IF) {
+        // Delegate branch parsing so nested if bodies consume their own tokens.
         if (!parse_if_statement(parser, &statement)) {
             return statement;
         }
@@ -1357,6 +1455,7 @@ Statement parser_parse(Parser *parser)
     }
 
     if (token->type == TOKEN_REPEAT) {
+        // Delegate range and loop-body parsing to the repeat parser.
         if (!parse_repeat_statement(parser, &statement)) {
             return statement;
         }
@@ -1364,6 +1463,7 @@ Statement parser_parse(Parser *parser)
     }
 
     if (token->type == TOKEN_VAR) {
+        // Parse one or more comma-separated declarations after 'var'.
         parser_advance(parser);
         variable_declaration.vars = NULL;
         variable_declaration.count = 0;
@@ -1428,6 +1528,7 @@ Statement parser_parse(Parser *parser)
     }
 
     if (token->type == TOKEN_IDENTIFIER) {
+        // Bare identifiers are not valid declaration statements in this language version.
         fprintf(stderr, "Syntax Error: Only literal values are allowed during variable declaration in Drift v0.2.\n");
         statement.type = STATEMENT_PRINT;
         print_statement.value = NULL;
@@ -1450,6 +1551,8 @@ Statement parser_parse(Parser *parser)
 
 void print_statement_free(PrintStatement *statement)
 {
+    /* Release both direct print text and deferred expression text, then clean
+       any array access attached to the statement. */
     if (statement == NULL) {
         return;
     }
@@ -1463,6 +1566,8 @@ void print_statement_free(PrintStatement *statement)
 
 void variable_declaration_free(VariableDeclaration *declaration)
 {
+    /* Free every declaration item and its nested payloads, then reset the list
+       so the declaration can be safely reused or cleaned up again. */
     if (declaration == NULL) {
         return;
     }

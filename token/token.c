@@ -1,4 +1,6 @@
-/* Token construction transfers text ownership into token storage and destruction releases it exactly once. */
+/* Token construction transfers text ownership 
+into token storage and destruction releases it exactly 
+once. */
 
 #include <stdlib.h>
 #include <string.h>
@@ -34,7 +36,9 @@ void token_free_array(Token *tokens, size_t count)
         return;
     }
 
-    for (i = 0; i < count; ++i) { // Each token owns only its value string here.
+    for (i = 0; i < count; ++i) { 
+        // Each token owns only its value string here.
+        // The token array itself is freed after all values are released.
         free(tokens[i].value);
     }
 

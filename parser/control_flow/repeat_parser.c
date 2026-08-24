@@ -8,6 +8,7 @@
 
 static Token *parser_peek(Parser *parser)
 {
+    // Inspect the current token without consuming it.
     if (parser == NULL || parser->index >= parser->count) {
         return NULL;
     }
@@ -16,6 +17,7 @@ static Token *parser_peek(Parser *parser)
 
 static Token *parser_advance(Parser *parser)
 {
+    // Consume one token and return it to the caller.
     if (parser == NULL || parser->index >= parser->count) {
         return NULL;
     }
@@ -24,6 +26,7 @@ static Token *parser_advance(Parser *parser)
 
 static int parser_expect(Parser *parser, TokenType type, const char *message)
 {
+    /* Require one grammar token and advance only after validation succeeds. */
     Token *token = parser_peek(parser);
     if (token == NULL || token->type != type) {
         if (message != NULL) {
@@ -37,11 +40,13 @@ static int parser_expect(Parser *parser, TokenType type, const char *message)
 
 static int is_statement_terminator(Token *token)
 {
+    // Header expressions stop at a newline or semicolon as well as explicit delimiters.
     return token != NULL && (token->type == TOKEN_NEWLINE || token->type == TOKEN_SEMICOLON);
 }
 
 static void append_statement(Statement **items, size_t *count, size_t *capacity, Statement statement)
 {
+    /* Grow the repeat body list as statements are parsed, preserving source order. */
     Statement *new_items;
     if (*count >= *capacity) {
         size_t new_capacity = (*capacity == 0U) ? 4U : (*capacity * 2U);
@@ -58,6 +63,8 @@ static void append_statement(Statement **items, size_t *count, size_t *capacity,
 
 static void free_statement_list(Statement *body, size_t count)
 {
+    /* Destroy each tagged statement with its matching cleanup routine before
+       releasing the container list. */
     if (body == NULL) {
         return;
     }
@@ -87,6 +94,7 @@ static void free_statement_list(Statement *body, size_t count)
 
 static int is_identifier_valid(const char *name)
 {
+    /* Repeat counters use the language's identifier alphabet, including '_' and '-'. */
     size_t i;
     if (name == NULL || name[0] == '\0') {
         return 0;
@@ -107,11 +115,14 @@ static char *read_until_tokens(Parser *parser, TokenType stop_a, TokenType stop_
 
 static char *read_until_token(Parser *parser, TokenType stop)
 {
+    // Convenience wrapper for expressions with one stopping token.
     return read_until_tokens(parser, stop, TOKEN_UNKNOWN);
 }
 
 static char *read_until_tokens(Parser *parser, TokenType stop_a, TokenType stop_b)
 {
+    /* Reconstruct a source-like expression until either delimiter. Quoted
+       strings are preserved so the evaluator can parse the result later. */
     size_t length = 0;
     char *result = NULL;
     Token *token;
@@ -164,6 +175,8 @@ static char *read_until_tokens(Parser *parser, TokenType stop_a, TokenType stop_
 
 static int parse_repeat_body(Parser *parser, Statement **out_body, size_t *out_count)
 {
+    /* Parse statements after the repeat header until 'end'. Nested statements
+       consume their own bodies, so this loop resumes at the next sibling. */
     Statement *body = NULL;
     size_t body_count = 0;
     size_t capacity = 0;
@@ -199,6 +212,11 @@ static int parse_repeat_body(Parser *parser, Statement **out_body, size_t *out_c
 
 int parse_repeat_statement(Parser *parser, Statement *statement)
 {
+    /*
+    Build the repeat AST in stages: counter name, optional range syntax, body,
+    and closing end token. Expressions remain as text because their values are
+    evaluated later by the interpreter in the current environment.
+    */
     RepeatStatement repeat_statement;
     Statement *body = NULL;
     size_t body_count = 0;
@@ -210,6 +228,7 @@ int parse_repeat_statement(Parser *parser, Statement *statement)
 
     memset(statement, 0, sizeof(*statement));
     memset(&repeat_statement, 0, sizeof(repeat_statement));
+    // The parser is positioned on 'repeat'; consume the keyword before reading the header.
     parser_advance(parser);
 
     token = parser_peek(parser);
@@ -219,6 +238,7 @@ int parse_repeat_statement(Parser *parser, Statement *statement)
     }
 
     if (token->type == TOKEN_VAR) {
+        // Both repeat counter declaration forms accept an optional 'var'.
         parser_advance(parser);
     }
 
@@ -242,6 +262,7 @@ int parse_repeat_statement(Parser *parser, Statement *statement)
     }
 
     if (token->type == TOKEN_LEFT_PAREN) {
+        // Parentheses introduce either a finite range or the language's infinite form.
         parser_advance(parser);
         repeat_statement.has_range = 1;
 
@@ -253,9 +274,11 @@ int parse_repeat_statement(Parser *parser, Statement *statement)
         }
 
         if (token->type == TOKEN_RIGHT_PAREN) {
+            // An empty pair means an unbounded loop whose counter starts at runtime default.
             repeat_statement.is_infinite = 1;
             parser_advance(parser);
         } else if (token->type == TOKEN_RANGE) {
+            // A range marker without endpoints is also treated as infinite syntax.
             repeat_statement.is_infinite = 1;
             parser_advance(parser);
             token = parser_peek(parser);
@@ -267,6 +290,7 @@ int parse_repeat_statement(Parser *parser, Statement *statement)
             parser_advance(parser);
         } else {
             repeat_statement.start_text = read_until_tokens(parser, TOKEN_RANGE, TOKEN_DOT);
+            // Keep start/end/step expressions as text for runtime evaluation.
             if (repeat_statement.start_text == NULL) {
                 fprintf(stderr, "Error: out of memory while reading loop start.\n");
                 free(repeat_statement.counter_name);
@@ -282,8 +306,10 @@ int parse_repeat_statement(Parser *parser, Statement *statement)
             }
 
             if (token->type == TOKEN_RANGE) {
+                // '..' is the inclusive range operator.
                 parser_advance(parser);
             } else if (token->type == TOKEN_DOT) {
+                // Three-dot forms are followed by '<' or '>' for exclusive bounds.
                 parser_advance(parser);
                 token = parser_peek(parser);
                 if (token != NULL && token->type == TOKEN_DOT) {
@@ -324,6 +350,7 @@ int parse_repeat_statement(Parser *parser, Statement *statement)
 
             token = parser_peek(parser);
             if (token != NULL && token->type == TOKEN_COMMA) {
+                // A comma introduces the optional counter step expression.
                 parser_advance(parser);
                 repeat_statement.has_step = 1;
                 repeat_statement.step_text = read_until_token(parser, TOKEN_RIGHT_PAREN);
@@ -348,6 +375,7 @@ int parse_repeat_statement(Parser *parser, Statement *statement)
             parser_advance(parser);
         }
     } else if (token->type == TOKEN_COLON) {
+        // A colon-only header is recognized but has no executable range.
         repeat_statement.has_range = 0;
         repeat_statement.has_step = 0;
         parser_advance(parser);
@@ -368,6 +396,7 @@ int parse_repeat_statement(Parser *parser, Statement *statement)
     }
     parser_advance(parser);
 
+    // The body is parsed only after the complete header has been validated.
     if (!parse_repeat_body(parser, &body, &body_count)) {
         free(repeat_statement.counter_name);
         free(repeat_statement.start_text);
@@ -394,6 +423,8 @@ int parse_repeat_statement(Parser *parser, Statement *statement)
 
 void repeat_statement_free(RepeatStatement *statement)
 {
+    /* Free all expression strings and recursively destroy the parsed body so
+       nested loops and conditionals do not retain allocated statements. */
     if (statement == NULL) {
         return;
     }

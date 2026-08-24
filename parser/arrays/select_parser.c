@@ -11,6 +11,11 @@
 static Token *parser_peek(Parser *parser);
 static Token *parser_advance(Parser *parser);
 
+/*
+Checks the current token and consumes it when it matches the expected grammar
+symbol. This keeps delimiter validation consistent across select() and tuple
+parsing while allowing each caller to provide a precise error message.
+*/
 static int parser_expect(Parser *parser, TokenType type, const char *message)
 {
     Token *token = parser_peek(parser);
@@ -24,6 +29,11 @@ static int parser_expect(Parser *parser, TokenType type, const char *message)
     return 1;
 }
 
+/*
+Reads one flat comma-separated tuple of integer indices. For example, the
+tokens 1, 2, 3 become one dynamically allocated list with tuple size three.
+The closing parenthesis is left for the caller to consume.
+*/
 static int parse_integer_tuple(Parser *parser, long **out_indices, size_t *out_count)
 {
     size_t count = 0;
@@ -53,6 +63,7 @@ static int parse_integer_tuple(Parser *parser, long **out_indices, size_t *out_c
         (void)end;
 
         parser_advance(parser);
+        // Grow the list only after the token has been confirmed as an integer.
         long *new_indices = (long *)realloc(indices, (count + 1U) * sizeof(long));
         if (new_indices == NULL) {
             fprintf(stderr, "Error: out of memory while reading select() indices\n");
@@ -82,6 +93,11 @@ static int parse_integer_tuple(Parser *parser, long **out_indices, size_t *out_c
     return 1;
 }
 
+/*
+Parses a parenthesized group that may contain several tuples or nested groups.
+Each child contributes one or more complete tuples; all children must have the
+same tuple width before their flat index lists can be concatenated.
+*/
 static int parse_tuple_group(Parser *parser, long **out_indices, size_t *out_count, size_t *out_tuple_size)
 {
     size_t tuple_count = 0;
@@ -110,11 +126,13 @@ static int parse_tuple_group(Parser *parser, long **out_indices, size_t *out_cou
         size_t child_tuple_size = 0;
 
         if (token->type == TOKEN_LEFT_PAREN) {
+            // Nested groups allow select() arguments to be grouped recursively.
             if (!parse_tuple_group(parser, &child_indices, &child_tuple_count, &child_tuple_size)) {
                 free(indices);
                 return 0;
             }
         } else {
+            // A non-parenthesized child is interpreted as one flat integer tuple.
             if (!parse_integer_tuple(parser, &child_indices, &child_tuple_size)) {
                 free(indices);
                 return 0;
@@ -130,6 +148,7 @@ static int parse_tuple_group(Parser *parser, long **out_indices, size_t *out_cou
         }
 
         if (tuple_size == 0) {
+            // The first child establishes the width expected from every sibling.
             tuple_size = child_tuple_size;
         } else if (child_tuple_size != tuple_size) {
             fprintf(stderr, "Syntax Error: Inconsistent select() tuple length.\n");
@@ -146,6 +165,7 @@ static int parse_tuple_group(Parser *parser, long **out_indices, size_t *out_cou
             return 0;
         }
         indices = new_indices;
+        // Append child tuples in source order so runtime selection preserves ordering.
         memcpy(indices + tuple_count * tuple_size, child_indices, child_tuple_count * tuple_size * sizeof(long));
         tuple_count += child_tuple_count;
         free(child_indices);
@@ -170,6 +190,11 @@ static int parse_tuple_group(Parser *parser, long **out_indices, size_t *out_cou
     return 1;
 }
 
+/*
+Parses the complete array.select(...) suffix. The direct integer form creates
+one tuple, while grouped arguments can produce multiple tuples. The resulting
+indices and break markers are stored in ArrayAccess for the interpreter.
+*/
 int parse_select_access(Parser *parser, ArrayAccess *access)
 {
     if (access == NULL) {
@@ -186,6 +211,7 @@ int parse_select_access(Parser *parser, ArrayAccess *access)
         return 0;
     }
     parser_advance(parser);
+    // Require the function call's opening delimiter before reading its tuples.
 
     if (!parser_expect(parser, TOKEN_LEFT_PAREN, "Syntax Error: Expected '(' after select.")) {
         return 0;
@@ -198,6 +224,7 @@ int parse_select_access(Parser *parser, ArrayAccess *access)
 
     Token *first_argument = parser_peek(parser);
     if (first_argument != NULL && first_argument->type == TOKEN_INTEGER) {
+        // Direct integer arguments are treated as one coordinate tuple.
         if (!parse_integer_tuple(parser, &indices, &tuple_size)) {
             return 0;
         }
@@ -209,6 +236,7 @@ int parse_select_access(Parser *parser, ArrayAccess *access)
             return 0;
         }
     } else while (1) {
+        // Parenthesized groups may expand into multiple coordinate tuples.
         Token *token = parser_peek(parser);
         if (token == NULL) {
             fprintf(stderr, "Syntax Error: Unterminated select() arguments.\n");
@@ -231,6 +259,7 @@ int parse_select_access(Parser *parser, ArrayAccess *access)
         }
 
         if (tuple_size == 0) {
+            // The first group defines the coordinate width for the selection.
             tuple_size = child_tuple_size;
         } else if (child_tuple_size != tuple_size) {
             fprintf(stderr, "Syntax Error: Inconsistent select() tuple length.\n");
@@ -249,6 +278,7 @@ int parse_select_access(Parser *parser, ArrayAccess *access)
             return 0;
         }
         indices = new_indices;
+        // Copy the group's flat coordinates into the final selection buffer.
         memcpy(indices + tuple_count * tuple_size, tuple, tuple_len * tuple_size * sizeof(long));
         free(tuple);
 
@@ -260,6 +290,7 @@ int parse_select_access(Parser *parser, ArrayAccess *access)
             return 0;
         }
         breaks = new_breaks;
+        // Break metadata is initialized alongside each tuple for later consumers.
         for (size_t i = 0; i < tuple_len; ++i) {
             breaks[tuple_count + i] = 0;
         }
@@ -299,9 +330,14 @@ int parse_select_access(Parser *parser, ArrayAccess *access)
     access->selection_tuple_size = tuple_size;
     access->selection_indices = indices;
     access->selection_breaks = breaks;
+    // Transfer ownership of the parsed buffers to the access expression.
     return 1;
 }
 
+/*
+Returns the current token without moving the parser cursor. NULL means the
+cursor has reached the end of the token array.
+*/
 Token *parser_peek(Parser *parser)
 {
     if (parser->index >= parser->count) {
@@ -310,6 +346,10 @@ Token *parser_peek(Parser *parser)
     return &parser->tokens[parser->index];
 }
 
+/*
+Returns the current token and advances the cursor by one. Parsing routines use
+this only after validating the token with parser_peek or parser_expect.
+*/
 Token *parser_advance(Parser *parser)
 {
     if (parser->index >= parser->count) {

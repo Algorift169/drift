@@ -29,6 +29,11 @@ static int parse_dynamic_multi_dimensional_initializer(Parser *parser,
                                                       Value **out_values,
                                                       size_t *out_count);
 
+/*
+Reads one integer token and converts its text into a long value. Keeping this
+conversion in one helper lets dimension and index parsing use the same token
+validation rules.
+*/
 static int parse_integer_token(Token *token, long *out_value)
 {
     if (token == NULL || token->type != TOKEN_INTEGER) {
@@ -42,6 +47,11 @@ static int parse_integer_token(Token *token, long *out_value)
     return 1;
 }
 
+/*
+Checks the current token and consumes it only when it has the expected type.
+The caller supplies the user-facing error because the same operation is used
+for different grammar rules, such as closing brackets and braces.
+*/
 static int parser_expect(Parser *parser, TokenType type, const char *message)
 {
     Token *token = parser_peek(parser);
@@ -55,11 +65,21 @@ static int parser_expect(Parser *parser, TokenType type, const char *message)
     return 1;
 }
 
+/*
+Identifies the literal tokens allowed inside array initializers. Identifiers
+and expressions are intentionally excluded because array elements are parsed
+as literal values in this grammar.
+*/
 static int is_literal_value_token(Token *token)
 {
     return token != NULL && (token->type == TOKEN_INTEGER || token->type == TOKEN_FLOAT || token->type == TOKEN_STRING || token->type == TOKEN_TRUE || token->type == TOKEN_FALSE || token->type == TOKEN_NULL || token->type == TOKEN_INFINITY);
 }
 
+/*
+Converts a literal token into a newly created runtime Value. Quoted strings are
+copied without their delimiters; all other supported literal kinds are mapped
+directly to their corresponding Value constructor.
+*/
 static Value parse_literal_value_token(Token *token)
 {
     if (token == NULL) {
@@ -114,6 +134,10 @@ static Value parse_literal_value_token(Token *token)
     return value_create_string(NULL);
 }
 
+/*
+Defines which element types can coexist in one array. Integer and float values
+are compatible with each other, while all other types must match exactly.
+*/
 static int array_element_type_compatible(ValueType current, ValueType incoming)
 {
     if (current == incoming) {
@@ -128,6 +152,10 @@ static int array_element_type_compatible(ValueType current, ValueType incoming)
     return 0;
 }
 
+/*
+Updates the inferred element type as values are encountered. A leading null
+does not decide the type, but infinity cannot be combined with another type.
+*/
 static int array_update_element_type(ValueType *type, ValueType incoming)
 {
     if (*type == VALUE_NULL && incoming != VALUE_NULL) {
@@ -140,6 +168,11 @@ static int array_update_element_type(ValueType *type, ValueType incoming)
     return array_element_type_compatible(*type, incoming);
 }
 
+/*
+Parses one fixed-shape brace level. At the deepest level it collects literal
+values; at higher levels it recursively collects child braces and flattens
+their values into the order used by ArrayValue.
+*/
 static int parse_initializer_values(Parser *parser,
                                     size_t level,
                                     size_t dimension_count,
@@ -160,6 +193,7 @@ static int parse_initializer_values(Parser *parser,
     }
     parser_advance(parser);
 
+    // Values are stored flat even though the source initializer is nested.
     Value *values = NULL;
     size_t count = 0;
     size_t expected_children = (level < dimension_count ? (size_t)dimensions[level] : 0);
@@ -181,6 +215,7 @@ static int parse_initializer_values(Parser *parser,
         }
 
         if (level + 1 == dimension_count) {
+            // The deepest level contains actual literals rather than child arrays.
             if (!is_literal_value_token(token)) {
                 fprintf(stderr, "Syntax Error: Expected literal value in array initializer.\n");
                 for (size_t i = 0; i < count; ++i) {
@@ -217,6 +252,7 @@ static int parse_initializer_values(Parser *parser,
             values = new_values;
             values[count++] = value;
         } else {
+            // Higher levels recurse into each child brace, then append its flat values.
             if (token->type != TOKEN_LEFT_BRACE) {
                 fprintf(stderr, "Syntax Error: Expected '{' in nested array initializer.\n");
                 for (size_t i = 0; i < count; ++i) {
@@ -303,6 +339,11 @@ static int parse_initializer_values(Parser *parser,
     return 1;
 }
 
+/*
+Reads consecutive bracket dimensions such as [2][3]. An empty bracket stores
+zero as a placeholder and marks the declaration dynamic; fixed dimensions keep
+their declared sizes for later initializer validation.
+*/
 static int parse_array_dimensions(Parser *parser, long **out_dimensions, size_t *out_count, int *error, int *out_dynamic_declaration)
 {
     size_t count = 0;
@@ -314,6 +355,7 @@ static int parse_array_dimensions(Parser *parser, long **out_dimensions, size_t 
 
         Token *token = parser_peek(parser);
         if (token != NULL && token->type == TOKEN_RIGHT_BRACKET) {
+            // [] means that this dimension will be inferred from its initializer.
             parser_advance(parser);
             dynamic_declaration = 1;
 
@@ -345,6 +387,7 @@ static int parse_array_dimensions(Parser *parser, long **out_dimensions, size_t 
         }
 
         parser_advance(parser);
+        // The closing bracket is required before this dimension can be recorded.
         if (!parser_expect(parser, TOKEN_RIGHT_BRACKET, "Syntax Error: Expected ']' after array size.")) {
             free(dimensions);
             *error = 1;
@@ -370,6 +413,11 @@ static int parse_array_dimensions(Parser *parser, long **out_dimensions, size_t 
     return 1;
 }
 
+/*
+Parses the outer blocks of a fixed multidimensional initializer. Each block is
+flattened by parse_initializer_values and appended to one contiguous Value
+buffer, matching the array module's row-major storage layout.
+*/
 static int parse_multi_dimensional_initializer(Parser *parser,
                                               size_t dimension_count,
                                               const long *dimensions,
@@ -380,6 +428,7 @@ static int parse_multi_dimensional_initializer(Parser *parser,
     Value *values = NULL;
     size_t count = 0;
 
+    // The first declared dimension tells us how many top-level blocks to read.
     for (long block = 0; block < dimensions[0]; ++block) {
         Value *block_values = NULL;
         size_t block_count = 0;
@@ -427,11 +476,17 @@ static int parse_dynamic_initializer_level(Parser *parser,
                                            Value **out_values,
                                            size_t *out_count)
 {
+    /*
+    Dynamic parsing discovers dimensions from the source. Fixed dimensions in
+    declared_dimensions still act as constraints, while zero dimensions are
+    replaced by the sizes found in each brace level.
+    */
     if (!parser_expect(parser, TOKEN_LEFT_BRACE, "Syntax Error: Expected '{' in dynamic array initializer.")) {
         return 0;
     }
 
     if (level + 1 == dimension_count) {
+        // At the leaf level, infer the dimension from the number of literals.
         if (!parse_dynamic_initializer_values(parser, element_type, out_values, out_count)) {
             return 0;
         }
@@ -458,6 +513,7 @@ static int parse_dynamic_initializer_level(Parser *parser,
     long **child_dimensions_array = NULL;
     size_t child_dim_count = dimension_count - (level + 1);
 
+    // Keep each child temporarily so ragged children can be compared and padded.
     while (1) {
         Token *token = parser_peek(parser);
         if (token == NULL) {
@@ -548,6 +604,7 @@ static int parse_dynamic_initializer_level(Parser *parser,
         }
 
         if (child_count == 0) {
+            // The first child establishes the reference shape for its siblings.
             max_child_dimensions = (long *)malloc(child_dim_count * sizeof(long));
             if (max_child_dimensions == NULL) {
                 fprintf(stderr, "Error: out of memory while parsing array initializer\n");
@@ -576,6 +633,7 @@ static int parse_dynamic_initializer_level(Parser *parser,
                 max_child_dimensions[i] = child_dimensions[level + 1 + i];
             }
         } else {
+            // Fixed child dimensions must match; dynamic dimensions expand to the largest child.
             for (size_t i = 0; i < child_dim_count; ++i) {
                 long declared_dim = declared_dimensions[level + 1 + i];
                 long child_dim = child_dimensions[level + 1 + i];
@@ -789,6 +847,11 @@ static int parse_dynamic_multi_dimensional_initializer(Parser *parser,
                                                       Value **out_values,
                                                       size_t *out_count)
 {
+    /*
+    Parses dynamic arrays with more than one dimension. Each top-level block is
+    parsed independently first, then all blocks are normalized to one common
+    shape so the final flat buffer can be indexed like a rectangular array.
+    */
     long *child_dimensions = NULL;
     Value *values = NULL;
     size_t count = 0;
@@ -805,6 +868,7 @@ static int parse_dynamic_multi_dimensional_initializer(Parser *parser,
     }
 
     size_t opening_brace_count = 0;
+    // Accept either an outer wrapper around all blocks or adjacent top-level blocks.
     while (parser->index + opening_brace_count < parser->count &&
            parser->tokens[parser->index + opening_brace_count].type == TOKEN_LEFT_BRACE) {
         opening_brace_count++;
@@ -874,6 +938,7 @@ static int parse_dynamic_multi_dimensional_initializer(Parser *parser,
         }
 
         if (block_count == 0) {
+            // The first block provides the initial shape for later blocks.
             expected_child_dimensions = (long *)malloc(child_dim_count * sizeof(long));
             if (expected_child_dimensions == NULL) {
                 fprintf(stderr, "Error: out of memory while parsing array initializer\n");
@@ -891,6 +956,7 @@ static int parse_dynamic_multi_dimensional_initializer(Parser *parser,
             memcpy(expected_child_dimensions, child_dimensions + 1, child_dim_count * sizeof(long));
             memcpy(&out_dimensions[1], child_dimensions + 1, child_dim_count * sizeof(long));
         } else {
+            // Fixed dimensions must agree; dynamic dimensions grow when a later block is larger.
             for (size_t i = 0; i < child_dim_count; ++i) {
                 if (declared_dimensions[i + 1] != 0 &&
                     child_dimensions[i + 1] != declared_dimensions[i + 1]) {
@@ -922,6 +988,7 @@ static int parse_dynamic_multi_dimensional_initializer(Parser *parser,
         }
 
         if (expected_child_total_count != 0 && new_child_total_count > expected_child_total_count) {
+            // When the shape grows, expand earlier blocks and fill new cells with null.
             Value *resized_values = (Value *)realloc(values, block_count * new_child_total_count * sizeof(Value));
             if (resized_values == NULL) {
                 fprintf(stderr, "Error: out of memory while parsing array initializer\n");
@@ -971,6 +1038,7 @@ static int parse_dynamic_multi_dimensional_initializer(Parser *parser,
         for (size_t i = 0; i < child_value_count; ++i) {
             values[count + i] = child_values[i];
         }
+        // Missing cells in a shorter child are represented by null Values.
         for (size_t i = child_value_count; i < expected_child_total_count; ++i) {
             values[count + i] = value_create_null();
         }
@@ -1024,6 +1092,11 @@ static int parse_dynamic_multi_dimensional_initializer(Parser *parser,
     return 1;
 }
 
+/*
+Parses the leaf values of a dynamic initializer until its closing brace. The
+element type is inferred from the first value and checked for compatibility
+with every later value.
+*/
 static int parse_dynamic_initializer_values(Parser *parser,
                                             ValueType *element_type,
                                             Value **out_values,
@@ -1072,6 +1145,7 @@ static int parse_dynamic_initializer_values(Parser *parser,
         }
 
         parser_advance(parser);
+        // Grow the flat value list only after the literal has passed type checks.
         Value *new_values = (Value *)realloc(values, (count + 1U) * sizeof(Value));
         if (new_values == NULL) {
             fprintf(stderr, "Error: out of memory while parsing array initializer\n");
@@ -1108,6 +1182,10 @@ static int parse_dynamic_initializer_values(Parser *parser,
     return 1;
 }
 
+/*
+Checks whether the next token begins an assignment initializer. This keeps the
+declaration parser readable while distinguishing `var a[3]` from `var a[3] =`.
+*/
 static int array_declaration_has_initializer(Parser *parser)
 {
     Token *token = parser_peek(parser);
@@ -1116,6 +1194,12 @@ static int array_declaration_has_initializer(Parser *parser)
 
 Value parse_array_declaration(Parser *parser, int *error)
 {
+    /*
+    Builds an ArrayValue from the declaration suffix. The parser first reads
+    dimensions, then chooses among inferred, fixed, and empty declarations;
+    initializer values are transferred into the array's flat storage before
+    temporary parser buffers are released.
+    */
     long *dimensions = NULL;
     size_t dimension_count = 0;
     int dynamic_declaration = 0;
@@ -1140,9 +1224,11 @@ Value parse_array_declaration(Parser *parser, int *error)
     }
 
     if (array_declaration_has_initializer(parser)) {
+        // An initializer determines values and, for dynamic dimensions, actual shape.
         parser_advance(parser);
 
         if (dimension_count == 0) {
+            // No brackets means a one-dimensional dynamic array inferred entirely from its values.
             Value *values = NULL;
             size_t value_count = 0;
             ValueType element_type = VALUE_NULL;
@@ -1183,6 +1269,7 @@ Value parse_array_declaration(Parser *parser, int *error)
         }
 
         if (has_dynamic_dimension) {
+            // At least one [] requires the recursive dynamic shape parser.
             long *actual_dimensions = (long *)malloc(dimension_count * sizeof(long));
             if (actual_dimensions == NULL) {
                 free(dimensions);
@@ -1233,6 +1320,7 @@ Value parse_array_declaration(Parser *parser, int *error)
         }
 
         size_t total_count = 1;
+        // Fixed dimensions must describe exactly the number of parsed elements.
         for (size_t i = 0; i < dimension_count; ++i) {
             if (dimensions[i] < 0) {
                 fprintf(stderr, "Runtime Error: Array size cannot be negative.\n");
@@ -1279,6 +1367,7 @@ Value parse_array_declaration(Parser *parser, int *error)
     }
 
     if (dynamic_declaration) {
+        // A dynamic declaration without an initializer starts empty but retains its rank.
         ArrayValue *array = array_value_create_fixed(dimension_count, dimensions, VALUE_NULL);
         array->is_dynamic = 1;
         free(dimensions);
@@ -1303,6 +1392,10 @@ Value parse_array_declaration(Parser *parser, int *error)
     return result;
 }
 
+/*
+Reads a comma-separated list of literal integer indices. The resulting buffer
+is owned by the caller and is used by array access and select parsing.
+*/
 static int parse_integer_sequence(Parser *parser, long **out_indices, size_t *out_count, int *error)
 {
     if (error != NULL) {
@@ -1329,6 +1422,7 @@ static int parse_integer_sequence(Parser *parser, long **out_indices, size_t *ou
         }
 
         parser_advance(parser);
+        // Append the validated index to the dynamically sized index list.
         long *new_indices = (long *)realloc(indices, (count + 1U) * sizeof(long));
         if (new_indices == NULL) {
             fprintf(stderr, "Error: out of memory while reading array index\n");
@@ -1353,6 +1447,11 @@ static int parse_integer_sequence(Parser *parser, long **out_indices, size_t *ou
     return 1;
 }
 
+/*
+Parses an identifier followed by zero or more bracket selectors. Empty brackets
+represent whole-array access, integer or named brackets represent element
+access, and a following dot delegates multi-value selection to select_parser.
+*/
 int parse_array_access(Parser *parser, ArrayAccess *access)
 {
     array_access_init(access);
@@ -1362,6 +1461,7 @@ int parse_array_access(Parser *parser, ArrayAccess *access)
     }
 
     access->name = drift_duplicate_string(token->value);
+    // Store the array name separately because the token buffer belongs to the lexer.
     parser_advance(parser);
 
     while (parser_peek(parser) != NULL && parser_peek(parser)->type == TOKEN_LEFT_BRACKET) {
@@ -1373,6 +1473,7 @@ int parse_array_access(Parser *parser, ArrayAccess *access)
         }
 
         if (next->type == TOKEN_RIGHT_BRACKET) {
+            // Empty [] selects the complete array rank position.
             parser_advance(parser);
             access->is_whole_array = 1;
             access->whole_array_dimension_count++;
@@ -1392,6 +1493,7 @@ int parse_array_access(Parser *parser, ArrayAccess *access)
         long index = 0;
         char *index_name = NULL;
         if (next->type == TOKEN_IDENTIFIER) {
+            // Named indices are resolved later, when the runtime environment exists.
             index_name = drift_duplicate_string(next->value);
             if (index_name == NULL) {
                 fprintf(stderr, "Error: out of memory while reading array index\n");
@@ -1421,6 +1523,7 @@ int parse_array_access(Parser *parser, ArrayAccess *access)
     }
 
     if (parser_peek(parser) != NULL && parser_peek(parser)->type == TOKEN_DOT) {
+        // Dot syntax belongs to the select parser, which extends this access object.
         return parse_select_access(parser, access);
     }
 
@@ -1429,6 +1532,7 @@ int parse_array_access(Parser *parser, ArrayAccess *access)
 
 void array_access_init(ArrayAccess *access)
 {
+    // Initialize every pointer, count, and mode flag so cleanup is always safe.
     if (access == NULL) {
         return;
     }
@@ -1448,6 +1552,8 @@ void array_access_init(ArrayAccess *access)
 
 void array_access_free(ArrayAccess *access)
 {
+    /* Release all buffers owned by an access expression, including each named
+       index string, then clear pointers to prevent accidental reuse. */
     if (access == NULL) {
         return;
     }
@@ -1469,6 +1575,7 @@ void array_access_free(ArrayAccess *access)
 
 Token *parser_peek(Parser *parser)
 {
+    // Look ahead without consuming a token; NULL marks the end of the token array.
     if (parser->index >= parser->count) {
         return NULL;
     }
@@ -1477,6 +1584,7 @@ Token *parser_peek(Parser *parser)
 
 Token *parser_advance(Parser *parser)
 {
+    // Return the current token and move the parser cursor forward by one.
     if (parser->index >= parser->count) {
         return NULL;
     }
