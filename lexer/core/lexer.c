@@ -82,6 +82,12 @@ static Token read_identifier(Lexer *lexer)
     }
 
     while (lexer->index < lexer->length && is_identifier_part(lexer->source[lexer->index])) {
+        /* A trailing -- or -= belongs to the operator stream, not to a
+           hyphenated identifier such as user-name. */
+        if (lexer->source[lexer->index] == '-' && lexer->index + 1 < lexer->length &&
+            (lexer->source[lexer->index + 1] == '-' || lexer->source[lexer->index + 1] == '=')) {
+            break;
+        }
         lexer->index++;
         length++;
     }

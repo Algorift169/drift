@@ -34,7 +34,6 @@ static int parser_expect(Parser *parser, TokenType type, const char *message)
     parser_advance(parser);
     return 1;
 }
-
 static int is_statement_terminator(Token *token)
 {
     return token != NULL && (token->type == TOKEN_NEWLINE || token->type == TOKEN_SEMICOLON);

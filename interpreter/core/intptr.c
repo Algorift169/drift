@@ -538,6 +538,8 @@ array or string indexing, and the right-hand branches of the ternary operator.
 static Value evaluate_expression_tokens(Environment *environment, Token *tokens, size_t count, size_t *index, int min_precedence, int *ok)
 {
     Value left = value_create_null();
+    const char *postfix_name = NULL;
+    int can_postfix = 0;
     TokenType unary_type = TOKEN_UNKNOWN;
     Token *token = NULL;
 
@@ -574,9 +576,16 @@ static Value evaluate_expression_tokens(Environment *environment, Token *tokens,
     } else if (token->type == TOKEN_IDENTIFIER || token->type == TOKEN_INTEGER || token->type == TOKEN_FLOAT ||
                token->type == TOKEN_STRING || token->type == TOKEN_TRUE || token->type == TOKEN_FALSE ||
                token->type == TOKEN_NULL || token->type == TOKEN_INFINITY) {
+        if (token->type == TOKEN_IDENTIFIER) {
+            // Keep the name so a following ++ or -- can update its environment binding.
+            postfix_name = token->value;
+            can_postfix = 1;
+        }
         left = resolve_identifier_or_literal(environment, token, ok);
         (*index)++;
         while (*index < count && tokens[*index].type == TOKEN_LEFT_BRACKET) {
+            // Indexed values are not direct environment bindings, so postfix updates apply only to plain identifiers.
+            can_postfix = 0;
             Value index_value;
             long arr_index = 0;
             (*index)++;
@@ -613,6 +622,21 @@ static Value evaluate_expression_tokens(Environment *environment, Token *tokens,
 
     if (unary_type != TOKEN_UNKNOWN) {
         left = apply_unary_operator(unary_type, &left);
+    }
+
+    if (can_postfix && *index < count &&
+        (tokens[*index].type == TOKEN_PLUS_PLUS || tokens[*index].type == TOKEN_MINUS_MINUS)) {
+        TokenType postfix_type = tokens[*index].type;
+        Value replacement = operator_apply(postfix_type == TOKEN_PLUS_PLUS ? OPERATOR_INCREMENT : OPERATOR_DECREMENT,
+                                            &left, NULL);
+        if (replacement.type == VALUE_NULL || !environment_set(environment, postfix_name, &replacement)) {
+            value_free(&replacement);
+            fprintf(stderr, "Runtime Error: Increment/decrement requires a valid variable value.\n");
+            *ok = 0;
+            return left;
+        }
+        value_free(&replacement);
+        (*index)++;
     }
 
     while (*index < count) {

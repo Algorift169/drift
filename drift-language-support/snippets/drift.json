@@ -1,4 +1,31 @@
 {
+  "For loop": {
+    "prefix": "for",
+    "body": [
+      "for var ${1:i} = ${2:0}, ${1:i} < ${3:10}, ${1:i}++:",
+      "    $0",
+      "end"
+    ],
+    "description": "Insert a Drift for loop"
+  },
+  "While loop": {
+    "prefix": "while",
+    "body": [
+      "while ${1:condition}:",
+      "    $0",
+      "end"
+    ],
+    "description": "Insert a Drift while loop"
+  },
+  "Repeat loop": {
+    "prefix": "repeat",
+    "body": [
+      "repeat var ${1:i} (${2:0}...${3:10}):",
+      "    $0",
+      "end"
+    ],
+    "description": "Insert a Drift repeat loop"
+  },
   "Executable block": {
     "prefix": "@exc",
     "body": [
