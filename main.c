@@ -1,4 +1,21 @@
-/* The entry point loads source, lexes and parses it, then hands the completed program to the interpreter. */
+/* The entry point loads source, lexes and parses it, 
+then hands the completed program to the interpreter.  There is also a 
+REPL mode that accumulates lines until a complete block is ready 
+for execution.  The REPL also recognizes block comments and ignores them. 
+But how do you know when a block is complete?  The REPL uses 
+indentation and trailing colons to determine whether the user has 
+finished typing a block.  If the user types a line that ends with a colon,
+the REPL will prompt for more input until the block is closed with an 
+`end` statement.  If the user types a line that is indented more than 
+the previous line, the REPL will also prompt for more input until the
+indentation returns to the previous level.  The REPL also recognizes
+the `exit` and `quit` commands to terminate the session.  The REPL is
+intended for interactive use, and is not suitable for production use.  
+The REPL is also not suitable for use in scripts, as it does not support
+piping input or output.  The REPL is intended for use in a terminal, and
+does not support GUI applications.  The REPL is also not suitable for
+use in web applications, as it does not support web sockets or HTTP requests.
+*/
 
 #include <ctype.h>
 #include <stdio.h>
@@ -11,6 +28,14 @@
 #include "drift/interpreter.h"
 #include "drift/executable_comments.h"
 
+/*
+SO now here we read the source file into a string, then we pass it to the
+lexer, which produces a list of tokens.  
+The parser then takes the list of tokens and produces a list of 
+statements.  The interpreter then takes the list of statements and executes 
+them.  The REPL mode accumulates lines until a complete block is ready for
+execution, then it passes the accumulated lines to the lexer, parser, and interpreter.
+*/
 static char *read_file_to_string(const char *path)
 {
     FILE *file = fopen(path, "rb");
@@ -62,6 +87,11 @@ static char *read_file_to_string(const char *path)
     return buffer;
 }
 
+
+// Just a helper function to read the condition text for a 
+//while statement. It reads tokens until it finds a colon or a newline, 
+//and returns the concatenated text of those tokens. It also trims 
+//whitespace from the resulting string.
 static char *trim_whitespace(const char *text)
 {
     const char *start = text;
@@ -93,7 +123,8 @@ static char *trim_whitespace(const char *text)
     return result;
 }
 
-/* Counts indentation so interactive input can recognize nested block structure. */
+/* Counts indentation so interactive input can recognize nested block 
+structure. */
 static size_t get_leading_spaces(const char *line)
 {
     size_t count = 0;
@@ -138,7 +169,13 @@ static int is_incomplete_block(const char *source)
     return 0;
 }
 
-/* Releases the active statement variant and its nested parser-owned allocations. */
+/* Releases the active statement variant and its nested parser-owned 
+allocations. Each statement type has its own free function, which is called 
+here based on the statement type.  The union in the Statement struct
+allows us to store different types of statements in the same memory space,
+but we need to know which type it is in order to free it correctly.
+
+*/
 static void statement_free(Statement *statement)
 {
     if (statement == NULL) {
@@ -170,7 +207,11 @@ static void statement_free(Statement *statement)
     }
 }
 
-/* Tokenizes, parses, and executes one complete source buffer in the given environment. */
+/* Tokenizes, parses, and executes one complete source buffer in the 
+given environment. */
+// And ya, this function is a bit long, but it does a lot of work.  
+// It takes the source code, lexes it into tokens, parses those tokens into
+// statements, and then executes those statements in the given environment.
 static int execute_source(const char *source, Environment *environment)
 {
     Lexer lexer;
@@ -181,11 +222,14 @@ static int execute_source(const char *source, Environment *environment)
     int result = 0;
     char *processed_source = NULL;
 
+    // The executable comments are extracted from the source code before 
+    //execution.  This allows the user to include comments in their code that
     processed_source = extract_executable_from_exc_blocks(source);
     if (processed_source == NULL) {
         return 1;
     }
 
+    // The lexer scans the source code and produces a list of tokens.
     lexer = lexer_create(processed_source);
     tokens = lexer_scan_all(&lexer, &token_count);
     free(processed_source);
@@ -193,6 +237,9 @@ static int execute_source(const char *source, Environment *environment)
         return 1;
     }
 
+    // The parser takes the list of tokens and produces a list of 
+    // statements.  Each statement is a different type of operation that can
+    // be executed by the interpreter.
     parser = parser_create(tokens, token_count);
     while (parser.index < parser.count) {
         Token *tok = &parser.tokens[parser.index];
@@ -204,6 +251,9 @@ static int execute_source(const char *source, Environment *environment)
             continue;
         }
 
+        // The parser parses the next statement from the list of tokens. 
+        // The statement is then executed by the interpreter in the given 
+        // environment.  The statement is then freed to avoid memory leaks.
         statement = parser_parse(&parser);
         result = interpreter_execute(statement, environment);
         statement_free(&statement);
@@ -212,12 +262,14 @@ static int execute_source(const char *source, Environment *environment)
         }
     }
 
-    token_free_array(tokens, token_count);
+    token_free_array(tokens, token_count); // Free the array of tokens to avoid memory leaks.
 
     return result;
 }
 
-/* Verifies that a file path uses the Drift source extension before execution. */
+/* Verifies that a file path uses the Drift source extension 
+before execution. File paths that do not end with .df are rejected.   
+*/
 static int has_df_extension(const char *path)
 {
     const char *dot;
@@ -230,7 +282,12 @@ static int has_df_extension(const char *path)
     return dot != NULL && strcmp(dot, ".df") == 0;
 }
 
-/* Reads one source file, executes it, and closes the file on every path. */
+/* Reads one source file, executes it, and closes the file
+ on every path.
+ The file is read into a string, which is then passed to the lexer, 
+parser, and interpreter.  The environment is created and freed for 
+each file execution.
+ */
 static int execute_file(const char *path)
 {
     char *source;
@@ -256,7 +313,8 @@ static int execute_file(const char *path)
     return result;
 }
 
-/* Runs the interactive loop, accumulating lines until a complete block is ready. */
+/* Runs the interactive loop, accumulating lines until a 
+complete block is ready. */
 static void run_repl(void)
 {
     char line_buffer[4096];
@@ -267,6 +325,10 @@ static void run_repl(void)
     printf(">>> ");
     fflush(stdout);
 
+    // The REPL reads lines from standard input, accumulating them into 
+    // a buffer until a complete block is ready for execution.  
+    // The REPL recognizes block comments and ignores them.  The REPL 
+    // also recognizes the `exit` and `quit` commands to terminate the session.
     while (fgets(line_buffer, sizeof(line_buffer), stdin) != NULL) {
         size_t line_len = strlen(line_buffer);
         char *new_buf = (char *)realloc(input_buffer, input_length + line_len + 1);
@@ -291,12 +353,14 @@ static void run_repl(void)
         }
         free(trimmed);
 
+        // If the input buffer is empty or only contains whitespace, prompt for more input.
         if (is_block_comment_open(input_buffer) || is_incomplete_block(input_buffer)) {
             printf("... ");
             fflush(stdout);
             continue;
         }
 
+        // If we reach here, we have a complete block of code to execute.
         char *trimmed2 = trim_whitespace(input_buffer);
         if (trimmed2[0] != '\0') {
             execute_source(input_buffer, &environment);
@@ -315,7 +379,8 @@ static void run_repl(void)
     environment_free(&environment);
 }
 
-/* Selects file execution or the interactive prompt from the command-line arguments. */
+/* Selects file execution or the interactive prompt 
+from the command-line arguments. */
 int main(int argc, char **argv)
 {
     if (argc > 1) {
