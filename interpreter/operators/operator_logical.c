@@ -1,9 +1,15 @@
+/* Logical evaluation normalizes booleans and numeric truthiness before
+ applying each connective. */
+
 #include <stdio.h>
 
 #include "drift/operator.h"
 
+/* Evaluates logical operators using the language truthiness rules for each operand. */
 Value operator_apply(OperatorType op, const Value *left, const Value *right)
 {
+    /* Normalize boolean, integer, and float operands before applying NOT, AND,
+       or OR. Unsupported value kinds remain false by initialization. */
     Value result = value_create_boolean(0);
 
     if (left == NULL) {
@@ -11,6 +17,9 @@ Value operator_apply(OperatorType op, const Value *left, const Value *right)
         return result;
     }
 
+    // Handle unary NOT operator separately, as it only requires the left 
+    // operand. For binary operators, both left and right operands are 
+    // required. If the right operand is NULL, an error message is printed.
     if (op == OPERATOR_NOT) {
         if (left->type == VALUE_BOOLEAN) {
             result = value_create_boolean(!left->boolean_value);

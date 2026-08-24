@@ -1,7 +1,10 @@
+/* Logical words share token meanings with symbolic operators so both forms reach one evaluator path. */
+
 #include <string.h>
 
 #include "drift/logical_keywords.h"
 
+/* Converts word-form logical operators into the same tokens used by symbols. */
 TokenType logical_keyword_token_type(const char *value)
 {
     if (value == NULL) {

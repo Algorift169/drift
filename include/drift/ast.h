@@ -1,3 +1,5 @@
+/* AST declarations connect parser-produced nodes with later statement evaluation. */
+
 #ifndef DRIFT_AST_H
 #define DRIFT_AST_H
 

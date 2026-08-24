@@ -1,3 +1,5 @@
+/* Executable-comment helpers extract embedded Drift source while preserving source order. */
+
 #ifndef DRIFT_EXECUTABLE_COMMENTS_H
 #define DRIFT_EXECUTABLE_COMMENTS_H
 

@@ -1,3 +1,5 @@
+/* The entry point loads source, lexes and parses it, then hands the completed program to the interpreter. */
+
 #include <ctype.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -91,6 +93,7 @@ static char *trim_whitespace(const char *text)
     return result;
 }
 
+/* Counts indentation so interactive input can recognize nested block structure. */
 static size_t get_leading_spaces(const char *line)
 {
     size_t count = 0;
@@ -101,6 +104,7 @@ static size_t get_leading_spaces(const char *line)
     return count;
 }
 
+/* Detects a trailing block colon while ignoring text that is inside quoted values. */
 static int has_pending_block_colon(const char *source)
 {
     char *trimmed = trim_whitespace(source);
@@ -119,6 +123,7 @@ static int has_pending_block_colon(const char *source)
     return result;
 }
 
+/* Combines indentation and delimiters to decide whether REPL input needs more lines. */
 static int is_incomplete_block(const char *source)
 {
     if (source == NULL || source[0] == '\0') {
@@ -133,6 +138,7 @@ static int is_incomplete_block(const char *source)
     return 0;
 }
 
+/* Releases the active statement variant and its nested parser-owned allocations. */
 static void statement_free(Statement *statement)
 {
     if (statement == NULL) {
@@ -160,6 +166,7 @@ static void statement_free(Statement *statement)
     }
 }
 
+/* Tokenizes, parses, and executes one complete source buffer in the given environment. */
 static int execute_source(const char *source, Environment *environment)
 {
     Lexer lexer;
@@ -206,6 +213,7 @@ static int execute_source(const char *source, Environment *environment)
     return result;
 }
 
+/* Verifies that a file path uses the Drift source extension before execution. */
 static int has_df_extension(const char *path)
 {
     const char *dot;
@@ -218,6 +226,7 @@ static int has_df_extension(const char *path)
     return dot != NULL && strcmp(dot, ".df") == 0;
 }
 
+/* Reads one source file, executes it, and closes the file on every path. */
 static int execute_file(const char *path)
 {
     char *source;
@@ -243,6 +252,7 @@ static int execute_file(const char *path)
     return result;
 }
 
+/* Runs the interactive loop, accumulating lines until a complete block is ready. */
 static void run_repl(void)
 {
     char line_buffer[4096];
@@ -301,6 +311,7 @@ static void run_repl(void)
     environment_free(&environment);
 }
 
+/* Selects file execution or the interactive prompt from the command-line arguments. */
 int main(int argc, char **argv)
 {
     if (argc > 1) {

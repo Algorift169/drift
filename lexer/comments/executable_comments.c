@@ -1,9 +1,12 @@
+/* Executable comments are filtered into source text so embedded code follows ordinary lexer ordering. */
+
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 #include "drift/executable_comments.h"
 
 /* Helper to check if a trimmed line matches @exc or .exc */
+/* Checks whether a comment line contains the requested executable marker. */
 static int is_exc_marker(const char *line, const char *marker)
 {
     if (line == NULL || marker == NULL) {
@@ -77,6 +80,7 @@ static char *strip_line_comment(const char *line)
 }
 
 /* Check if current position starts a block comment closing sequence */
+/* Scans forward from a block-comment position to locate its closing delimiter. */
 static int check_block_end(const char *source, size_t pos, size_t len)
 {
     if (pos + 1 < len && source[pos] == '*' && source[pos + 1] == '/') {

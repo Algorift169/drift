@@ -1,10 +1,15 @@
+/* Bitwise operators are defined for integer operands and reject unsupported types through runtime diagnostics. */
+
 #include <stdio.h>
 #include <math.h>
 
 #include "drift/operator.h"
-
+// Checks if a value is an integer or a float that can be safely
+// converted to an integer
 static int require_integer_value(const Value *val, long *out)
 {
+    /* Whole-valued floats are accepted because they have an exact integer
+       representation; fractional values are rejected. */
     if (val == NULL || out == NULL) {
         return 0;
     }
@@ -23,6 +28,8 @@ static int require_integer_value(const Value *val, long *out)
 
 Value operator_apply(OperatorType op, const Value *left, const Value *right)
 {
+    /* Handle unary NOT separately, then validate both operands for binary
+       operations before applying the selected bitwise transformation. */
     Value result = value_create_null();
     long lval = 0;
     long rval = 0;

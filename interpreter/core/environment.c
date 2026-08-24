@@ -1,20 +1,43 @@
+/* Runtime environments resolve names locally first, then follow the enclosing scope chain. 
+The environment is implemented as a fixed-capacity table of name-value pairs,which is sufficient for
+the current language design. The environment is not thread-safe, and it is not designed for 
+concurrent access. The environment is intended to be used in a single-threaded context, where each 
+thread has its own environment. The environment is not designed to be shared between threads,
+and it is not designed to be used in a multi-threaded context. The environment is intended to be used
+in a single-threaded context, where each thread has its own environment. The environment is not
+designed to be shared between threads, and it is not designed to be used in a multi -threaded context. 
+The environment is implemented as a fixed-capacity table of name-value pairs, which is sufficient for
+the current language design. The environment is not thread-safe, and it is not designed for 
+concurrent access. The environment is intended to be used in a single-threaded context, where each
+thread has its own environment. The environment is not designed to be shared between threads,
+and it is not designed to be used in a multi-threaded context. The environment is intended
+to be used in a single-threaded context, where each thread has its own environment.
+*/
+
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 
 #include "drift/environment.h"
 
+/* Centralizes name comparison so all environment operations use identical matching rules. */
 static int is_name_equal(const char *left, const char *right)
 {
     return strcmp(left, right) == 0;
 }
 
+/* Initializes every slot so later cleanup can safely inspect the fixed-capacity table.
+TWe need to initialize the environment entries to NULL to avoid dangling pointers and ensure 
+that the environment is in a consistent state. This allows for safe cleanup of the environment 
+later on, as we can check for NULL entries before attempting to free them. So the function sets the 
+count to 0 and initializes each entry's name to NULL and value to a default Value with type VALUE_NULL.
+*/
 Environment environment_create(void)
 {
     Environment environment;
     int i;
 
-    environment.count = 0;
+    environment.count = 0; // Only the prefix below count contains active bindings.
     for (i = 0; i < DRIFT_ENVIRONMENT_CAPACITY; ++i) {
         environment.entries[i].name = NULL;
         environment.entries[i].value = value_create_string(NULL);
@@ -23,6 +46,9 @@ Environment environment_create(void)
     return environment;
 }
 
+/* Releases active names and values, leaving the environment empty but still reusable. Using this function
+    allows for proper cleanup of the environment without deallocating the Environment structure itself.
+*/
 void environment_free(Environment *environment)
 {
     int i;
@@ -31,7 +57,7 @@ void environment_free(Environment *environment)
         return;
     }
 
-    for (i = 0; i < environment->count; ++i) {
+    for (i = 0; i < environment->count; ++i) { // Visit only occupied entries.
         free(environment->entries[i].name);
         value_free(&environment->entries[i].value);
     }
@@ -39,6 +65,7 @@ void environment_free(Environment *environment)
     environment->count = 0;
 }
 
+/* Replaces an existing binding or appends a copied binding when the name is new. */
 int environment_set(Environment *environment, const char *name, const Value *value)
 {
     int i;
@@ -49,7 +76,7 @@ int environment_set(Environment *environment, const char *name, const Value *val
         return 0;
     }
 
-    for (i = 0; i < environment->count; ++i) {
+    for (i = 0; i < environment->count; ++i) { // Prefer replacement to duplicate names.
         if (is_name_equal(environment->entries[i].name, name)) {
             value_free(&environment->entries[i].value);
             new_value = value_copy(value);
@@ -62,7 +89,7 @@ int environment_set(Environment *environment, const char *name, const Value *val
         return 0;
     }
 
-    copy_name = (char *)malloc(strlen(name) + 1U);
+    copy_name = (char *)malloc(strlen(name) + 1U); // Environment owns its name copy.
     if (copy_name == NULL) {
         return 0;
     }
@@ -76,6 +103,7 @@ int environment_set(Environment *environment, const char *name, const Value *val
     return 1;
 }
 
+/* Finds a binding and returns a copy so reading cannot transfer table ownership. */
 int environment_get(const Environment *environment, const char *name, Value *out_value)
 {
     int i;
@@ -94,6 +122,12 @@ int environment_get(const Environment *environment, const char *name, Value *out
     return 0;
 }
 
+/* Checks membership without allocating or copying the stored value. 
+This function iterates through the environment's entries and compares the provided name with each 
+entry's name using the is_name_equal function. If a match is found, it returns 1 to indicate that
+the name exists in the environment. If no match is found after checking all entries, it returns
+0 to indicate that the name does not exist in the environment.
+*/
 int environment_exists(const Environment *environment, const char *name)
 {
     int i;

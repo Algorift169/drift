@@ -1,3 +1,5 @@
+/* Dispatches operator evaluation to category-specific implementations without owning operands. */
+
 #include <stdio.h>
 #include <stdlib.h>
 #include <math.h>
@@ -6,7 +8,10 @@
 #include "drift/operator.h"
 #include "drift/array_value.h"
 
-/* Forward declarations for category-specific operators */
+/*
+Each operator category has its own implementation so validation and result
+construction stay local. The dispatcher below only selects the correct helper.
+*/
 static Value operator_apply_arithmetic(OperatorType op, const Value *left, const Value *right);
 static Value operator_apply_relational(OperatorType op, const Value *left, const Value *right);
 static Value operator_apply_logical(OperatorType op, const Value *left, const Value *right);
@@ -18,6 +23,7 @@ static Value operator_apply_membership(OperatorType op, const Value *container, 
 
 int operator_is_comparison(OperatorType op)
 {
+    // Comparison operators produce boolean results from equality or ordering tests.
     return op == OPERATOR_EQUAL_EQUAL || op == OPERATOR_NOT_EQUAL ||
            op == OPERATOR_GREATER || op == OPERATOR_LESS ||
            op == OPERATOR_GREATER_EQUAL || op == OPERATOR_LESS_EQUAL;
@@ -25,11 +31,13 @@ int operator_is_comparison(OperatorType op)
 
 int operator_is_logical(OperatorType op)
 {
+    // Logical operators consume truthy values and return a boolean result.
     return op == OPERATOR_AND_AND || op == OPERATOR_OR_OR || op == OPERATOR_NOT;
 }
 
 int operator_is_bitwise(OperatorType op)
 {
+    // Bitwise operators work on integer representations, including shifts and NOT.
     return op == OPERATOR_BITWISE_AND || op == OPERATOR_BITWISE_OR ||
            op == OPERATOR_BITWISE_XOR || op == OPERATOR_BITWISE_NOT ||
            op == OPERATOR_SHIFT_LEFT || op == OPERATOR_SHIFT_RIGHT;
@@ -37,6 +45,8 @@ int operator_is_bitwise(OperatorType op)
 
 Value operator_apply(OperatorType op, const Value *left, const Value *right)
 {
+    /* Route the enum ranges to the matching implementation. No operand is
+       stored or freed here; ownership remains with the caller. */
     if (op >= OPERATOR_ADD && op <= OPERATOR_MODULO) {
         return operator_apply_arithmetic(op, left, right);
     } else if (op >= OPERATOR_EQUAL_EQUAL && op <= OPERATOR_LESS_EQUAL) {
@@ -62,6 +72,8 @@ Value operator_apply(OperatorType op, const Value *left, const Value *right)
 
 static int require_integer_value(const Value *val, long *out)
 {
+    /* Bitwise operations accept integers and whole-valued floats, converting
+       the latter only after confirming they have no fractional component. */
     if (val == NULL || out == NULL) {
         return 0;
     }
@@ -80,6 +92,7 @@ static int require_integer_value(const Value *val, long *out)
 
 static int require_numeric_pair(const Value *left, const Value *right, double *l, double *r)
 {
+    // Convert integer, float, and boolean operands to the common arithmetic type.
     if (left == NULL || right == NULL || l == NULL || r == NULL) {
         return 0;
     }
@@ -109,6 +122,8 @@ static int require_numeric_pair(const Value *left, const Value *right, double *l
 
 static Value operator_apply_arithmetic(OperatorType op, const Value *left, const Value *right)
 {
+    /* Preserve integer results when both operands are integers. Mixed numeric
+       operands use double precision and return a float Value. */
     Value result = value_create_null();
 
     if (left == NULL || right == NULL) {
@@ -182,6 +197,8 @@ static Value operator_apply_arithmetic(OperatorType op, const Value *left, const
 
 static int value_to_numeric(const Value *val, double *out)
 {
+    /* Relational comparisons may compare numeric values across types, including
+       numeric strings and the language's infinity value. */
     if (val == NULL || out == NULL) return 0;
     if (val->type == VALUE_INTEGER) {
         *out = (double)val->integer_value;
@@ -212,6 +229,7 @@ static int value_to_numeric(const Value *val, double *out)
 
 static void value_to_string_buf(const Value *val, char *buf, size_t buf_size)
 {
+    // Creates a bounded textual representation for fallback comparisons.
     if (val == NULL || buf == NULL || buf_size == 0) return;
     buf[0] = '\0';
     if (val->type == VALUE_STRING) {
@@ -233,6 +251,8 @@ static void value_to_string_buf(const Value *val, char *buf, size_t buf_size)
 
 static Value operator_apply_relational(OperatorType op, const Value *left, const Value *right)
 {
+    /* Compare integers, strings, booleans, and compatible numeric values in
+       that order; fallback values are compared using their text form. */
     Value result = value_create_boolean(0);
 
     if (left == NULL || right == NULL) {
@@ -294,6 +314,7 @@ static Value operator_apply_relational(OperatorType op, const Value *left, const
 
 static Value operator_apply_logical(OperatorType op, const Value *left, const Value *right)
 {
+    // Normalize supported operands to truth values before applying the connective.
     Value result = value_create_boolean(0);
 
     if (op == OPERATOR_NOT) {
@@ -347,6 +368,8 @@ static Value operator_apply_logical(OperatorType op, const Value *left, const Va
 
 static Value operator_apply_bitwise(OperatorType op, const Value *left, const Value *right)
 {
+    /* NOT is unary. All other bitwise operators require two validated integer
+       operands and return a newly constructed integer Value. */
     Value result = value_create_null();
     long lval = 0;
     long rval = 0;
@@ -389,6 +412,8 @@ static Value operator_apply_bitwise(OperatorType op, const Value *left, const Va
 
 static Value operator_apply_assignment(OperatorType op, const Value *left, const Value *right)
 {
+    /* This helper validates assignment operands but does not mutate bindings;
+       the interpreter performs the actual environment update. */
     Value result = value_create_null();
 
     if (op == OPERATOR_ADD_ASSIGN || op == OPERATOR_SUBTRACT_ASSIGN ||
@@ -420,6 +445,7 @@ static Value operator_apply_assignment(OperatorType op, const Value *left, const
 
 static Value operator_apply_increment(OperatorType op, const Value *value)
 {
+    // Increment and decrement calculate replacement values without mutating the operand.
     Value result = value_create_null();
 
     if (value == NULL) {
@@ -456,6 +482,8 @@ static Value operator_apply_increment(OperatorType op, const Value *value)
 
 static Value operator_apply_range(OperatorType op, const Value *start, const Value *end)
 {
+    /* Build an owned dynamic integer array, choosing ascending or descending
+       order from the two inclusive endpoints. */
     Value result = value_create_null();
 
     if (op == OPERATOR_RANGE) {
@@ -510,6 +538,8 @@ static Value operator_apply_range(OperatorType op, const Value *start, const Val
 
 static Value operator_apply_membership(OperatorType op, const Value *container, const Value *member)
 {
+    /* Search arrays by compatible scalar type and strings by substring. A
+       boolean false is retained for unsupported or absent members. */
     Value result = value_create_boolean(0);
 
     if (op == OPERATOR_IN) {

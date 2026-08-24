@@ -1,3 +1,5 @@
+/* Public array metadata and traversal helpers used by parsing and execution. */
+
 #ifndef DRIFT_ARRAY_H
 #define DRIFT_ARRAY_H
 

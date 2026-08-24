@@ -1,9 +1,17 @@
+/* Array values own their element storage and carry dimensions for indexed access. */
+
 #ifndef DRIFT_ARRAY_VALUE_H
 #define DRIFT_ARRAY_VALUE_H
 
 #include <stddef.h>
 #include "drift/value.h"
 
+/**
+ * Represents an array value with dynamic or fixed dimensions.
+ * Holds the element type, dimensions, total count of elements, 
+ * and the actual elements. And also indicates whether the array is 
+ * dynamic and its current length.
+ */
 typedef struct ArrayValue {
     ValueType element_type;
     size_t dimension_count;

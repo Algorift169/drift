@@ -1,3 +1,5 @@
+/* Select parsing consumes indices recursively and leaves the following delimiter for its owning statement. */
+
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>

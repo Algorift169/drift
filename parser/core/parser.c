@@ -1,3 +1,5 @@
+/* Expression parsing uses recursive precedence levels so tighter operators bind before outer operators. */
+
 #include <ctype.h>
 #include <stdio.h>
 #include <stdlib.h>

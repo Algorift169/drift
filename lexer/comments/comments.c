@@ -1,7 +1,10 @@
+/* Comment scanning advances through line and block forms while preserving lexer position at the next token. */
+
 #include <stdio.h>
 #include <string.h>
 #include "drift/comments.h"
 
+/* Scans source while skipping quoted text and line comments before checking block balance. */
 int is_block_comment_open(const char *source)
 {
     if (source == NULL) {
@@ -10,7 +13,7 @@ int is_block_comment_open(const char *source)
 
     int in_block = 0;
     size_t i = 0;
-    while (source[i] != '\0') {
+    while (source[i] != '\0') { // Advance one lexical construct at a time.
         if (!in_block && (source[i] == '\'' || source[i] == '"')) {
             char quote = source[i];
             i++;
@@ -57,6 +60,7 @@ void comments_reset_state(void)
 {
 }
 
+/* Consumes the comment beginning at the current lexer position and updates state for blocks. */
 int lexer_skip_comments(Lexer *lexer)
 {
     if (lexer == NULL || lexer->source == NULL || lexer->index >= lexer->length) {
@@ -64,7 +68,7 @@ int lexer_skip_comments(Lexer *lexer)
     }
 
     // Handle case where we're already inside a block comment
-    if (lexer->in_block_comment) {
+    if (lexer->in_block_comment) { // Resume an earlier block before looking for new syntax.
         // Skip all characters until we find */
         while (lexer->index < lexer->length) {
             if (lexer->source[lexer->index] == '*' &&

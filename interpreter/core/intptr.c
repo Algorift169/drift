@@ -1,3 +1,16 @@
+/* Integer-pointer helpers support recursive value and container operations. 
+Anything that needs to traverse values, arrays, or other containers can use these functions to
+avoid duplicating the logic for converting between flat indices and multi-dimensional coordinates.
+The functions provide a consistent way to handle integer pointers, which are used to represent
+multi-dimensional indices in arrays. The functions include utilities for calculating the total number 
+of elements in an array, converting between flat indices and multi-dimensional coordinates, and
+validating indices against array dimensions. By using these helpers, the code can maintain a clear
+and consistent approach to working with integer pointers, reducing the risk of errors and improving
+code maintainability. The functions are designed to be efficient and handle edge cases, 
+such as negative indices or indices that exceed the array's dimensions. They also provide error
+reporting mechanisms to indicate when an operation fails due to invalid indices or other issues.
+*/
+
 #include <errno.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -11,12 +24,30 @@
 #include "drift/operator_ternary.h"
 #include "drift/parser.h"
 
+/*
+We take a structure approach to managing integer pointers, which represent multi-dimensional indices 
+in arrays. The structure encapsulates the necessary information for traversing and manipulating
+multi-dimensional arrays, including the current index, the total number of dimensions, and the
+size of each dimension. By using a structure, we can easily pass around the integer pointer state
+and maintain consistency across different functions that operate on arrays. The structure also allows
+for additional metadata to be added in the future, such as error flags or context information, without
+changing the function signatures. This approach improves code readability and maintainability, as it
+provides a clear representation of the integer pointer state and its associated data. It also enables 
+the implementation of helper functions that can operate on the structure, such as incrementing the
+current index, validating indices against dimensions, or converting between flat and multi-dimensional
+indices. Overall, using a structure for integer pointers enhances the clarity and robustness of the
+codebase, making it easier to work with multi-dimensional arrays and reducing the likelihood of errors.
+*/
 typedef struct {
     char *data;
     size_t length;
     size_t capacity;
 } StringBuilder;
 
+
+// Initializes a StringBuilder with a default capacity. The function allocates memory for the
+// StringBuilder's data buffer and sets the initial length to 0. If memory allocation fails
+// during initialization, the function returns 0 to indicate failure. Otherwise, it returns 1
 static int sb_init(StringBuilder *sb)
 {
     if (sb == NULL) {
@@ -33,6 +64,12 @@ static int sb_init(StringBuilder *sb)
     return 1;
 }
 
+
+// Simply frees the allocated memory for the StringBuilder's data buffer and resets its fields to
+// a safe state. This ensures that the StringBuilder can be reused or safely discarded without
+// leaving dangling pointers or invalid state. The function checks if the StringBuilder pointer
+// is NULL before attempting to free its data, preventing potential segmentation faults. After
+// freeing the data, it sets the data pointer to NULL and resets the length and capacity to 0.
 static void sb_free(StringBuilder *sb)
 {
     if (sb == NULL) {
@@ -44,18 +81,19 @@ static void sb_free(StringBuilder *sb)
     sb->capacity = 0;
 }
 
+// Appends a string to the StringBuilder, resizing the buffer if necessary. 
 static int sb_append(StringBuilder *sb, const char *text)
 {
     if (sb == NULL || text == NULL) {
         return 0;
     }
 
-    size_t text_length = strlen(text);
+    size_t text_length = strlen(text); // Calculate the length of the text to append
     size_t required = sb->length + text_length + 1;
     if (required > sb->capacity) {
-        size_t new_capacity = sb->capacity * 2;
+        size_t new_capacity = sb->capacity * 2; // Double the capacity until it can accommodate the new text
         while (new_capacity < required) {
-            new_capacity *= 2;
+            new_capacity *= 2; // Keep doubling until we have enough capacity;
         }
         char *new_data = (char *)realloc(sb->data, new_capacity);
         if (new_data == NULL) {
@@ -65,16 +103,24 @@ static int sb_append(StringBuilder *sb, const char *text)
         sb->capacity = new_capacity;
     }
 
+    // memcpy is used to copy the new text into the StringBuilder's data buffer, 
+    // and the length is updated accordingly. The null terminator is added to ensure the string 
+    // is properly terminated. This allows for safe string operations and prevents buffer overflows.
     memcpy(sb->data + sb->length, text, text_length);
     sb->length += text_length;
     sb->data[sb->length] = '\0';
     return 1;
 }
 
+// Appends one character while preserving the StringBuilder's null terminator.
 static int sb_append_char(StringBuilder *sb, char c)
 {
     if (sb == NULL) {
         return 0;
+/*
+Removes whitespace from expression fragments in place. This is used for repeat
+step shorthand, where spaces should not change whether a counter form matches.
+*/
     }
 
     if (sb->length + 2 > sb->capacity) {
@@ -92,13 +138,25 @@ static int sb_append_char(StringBuilder *sb, char c)
     return 1;
 }
 
+// The function appends a single character to the StringBuilder, resizing the buffer if necessary.
 static int format_value_to_string(const Value *value, StringBuilder *sb);
+// The function formats a Value object into a string representation, handling different types of values
 static int format_array_value_to_string(const ArrayValue *array, StringBuilder *sb);
+// The function formats an array value into a string representation.
 static int format_array_recursive_to_string(const ArrayValue *array, size_t dimension, size_t base_offset, StringBuilder *sb);
+// The function recursively formats a multi-dimensional array into a string representation, handling each dimension and its elements appropriately.
 static int format_array_element_to_string(const ArrayValue *array, const long *indices, size_t index_count, StringBuilder *sb);
+// The function formats a specific element of an array into a string representation based on the provided indices.
 static void strip_whitespace(char *text);
+// The function removes leading and trailing whitespace from a string in place, modifying the original string. It uses pointers to identify the start and end 
+// of the non-whitespace portion of the string, and then shifts the characters accordingly to eliminate
 static int parse_counter_step_expression(const char *step_expr, const char *counter_name, long *out_step);
 
+/*
+Parses the shorthand used by repeat steps, such as counter++, ++counter, or
+counter-2. A return value of 1 means the expression directly describes a step;
+otherwise the caller must evaluate it as a normal expression.
+*/
 static int parse_counter_step_expression(const char *step_expr, const char *counter_name, long *out_step)
 {
     char *normalized = NULL;
@@ -167,6 +225,10 @@ static int parse_counter_step_expression(const char *step_expr, const char *coun
     return 0;
 }
 
+/*
+Copies literal array indices and resolves indices written as variable names.
+The returned array belongs to the caller and must be released with free().
+*/
 static int resolve_array_indices(const ArrayAccess *access, Environment *environment, long **out_indices)
 {
     if (access == NULL || environment == NULL || out_indices == NULL) {
@@ -206,6 +268,11 @@ static int resolve_array_indices(const ArrayAccess *access, Environment *environ
     return 1;
 }
 
+/*
+Walks a chain of indices through arrays and strings. Multidimensional arrays
+are resolved in one operation, while one-dimensional nested values are stepped
+through so expressions such as matrix[0][1] remain supported.
+*/
 static int resolve_nested_array_access(const Value *base_value, const ArrayAccess *access, Environment *environment, Value *out_value)
 {
     Value current = value_create_null();
@@ -275,6 +342,11 @@ static int resolve_nested_array_access(const Value *base_value, const ArrayAcces
     return 1;
 }
 
+/*
+Uses the normal lexer and parser to decide whether template text is an array
+access. Requiring the parser to consume EOF prevents ordinary text from being
+mistaken for a partial access expression.
+*/
 static int parse_array_template_expression(const char *expr, ArrayAccess *access)
 {
     if (expr == NULL || access == NULL) {
@@ -303,6 +375,11 @@ static int parse_array_template_expression(const char *expr, ArrayAccess *access
     return 1;
 }
 
+/*
+Converts each runtime value type into the truth value used by if conditions
+and logical operators. Empty strings and arrays, null, and numeric zero are
+false; infinity is true.
+*/
 static int value_is_truthy(const Value *value)
 {
     if (value == NULL) {
@@ -351,6 +428,11 @@ static void strip_whitespace(char *text)
     *write = '\0';
 }
 
+/*
+Resolves one index against a one-dimensional array or string and returns a
+fresh Value. Multidimensional access is handled by the expression evaluator's
+array-access chain instead.
+*/
 static int resolve_indexed_value(const Value *container, long index, Value *out_value)
 {
     if (container == NULL || out_value == NULL) {
@@ -391,10 +473,21 @@ static int resolve_indexed_value(const Value *container, long index, Value *out_
     return 0;
 }
 
+/*
+Turns a lexer token into a runtime value. Identifiers are looked up in the
+environment, while literals are parsed without mutating the token stream.
+The ok flag distinguishes an unsupported token or missing variable from a
+valid null value.
+*/
 static Value resolve_identifier_or_literal(Environment *environment, Token *token, int *ok)
 {
     Value value = value_create_null();
     if (token == NULL || ok == NULL) {
+/*
+Returns the binding power used by the precedence-climbing expression parser.
+Higher values bind more tightly; the ternary operator is intentionally the
+loosest operator in the language.
+*/
         *ok = 0;
         return value;
     }
@@ -497,6 +590,10 @@ static int token_precedence(TokenType type)
     }
 }
 
+/*
+Applies the unary operators supported by Drift. Unary operators return a new
+Value, leaving the operand owned by the caller so it can be released normally.
+*/
 static Value apply_unary_operator(TokenType type, const Value *value)
 {
     Value result = value_create_null();
@@ -528,6 +625,11 @@ static Value apply_unary_operator(TokenType type, const Value *value)
     return result;
 }
 
+/*
+Evaluates one precedence-climbing expression directly from lexer tokens.
+Besides binary operators, this routine handles parentheses, unary operators,
+array or string indexing, and the right-hand branches of the ternary operator.
+*/
 static Value evaluate_expression_tokens(Environment *environment, Token *tokens, size_t count, size_t *index, int min_precedence, int *ok)
 {
     Value left = value_create_null();
@@ -721,6 +823,10 @@ static Value evaluate_expression_tokens(Environment *environment, Token *tokens,
     return left;
 }
 
+/*
+Creates a temporary lexer/parser input for an expression stored in the AST,
+evaluates it, and rejects any non-EOF tokens left after the expression.
+*/
 static Value evaluate_expression_text(Environment *environment, const char *expression, int *ok)
 {
     Lexer lexer;
@@ -753,6 +859,10 @@ static Value evaluate_expression_text(Environment *environment, const char *expr
     return result;
 }
 
+/*
+Writes a runtime value using Drift's user-facing representation. Arrays use the
+array module's printer because their layout depends on their dimensions.
+*/
 static void print_value(const Value *value)
 {
     if (value == NULL) {
@@ -786,6 +896,10 @@ static void print_value(const Value *value)
     }
 }
 
+/*
+Appends a scalar or array value to a StringBuilder. This is the formatting path
+used by interpolation, where output must be assembled before it is printed.
+*/
 static int format_value_to_string(const Value *value, StringBuilder *sb)
 {
     char buffer[128];
@@ -816,6 +930,10 @@ static int format_value_to_string(const Value *value, StringBuilder *sb)
     }
 }
 
+/*
+Recursively formats an array in row-major order. The base offset identifies the
+first element of the current slice, and stride skips the dimensions below it.
+*/
 static int format_array_recursive_to_string(const ArrayValue *array, size_t dimension, size_t base_offset, StringBuilder *sb)
 {
     if (array == NULL || sb == NULL) {
@@ -860,6 +978,9 @@ static int format_array_recursive_to_string(const ArrayValue *array, size_t dime
     return 1;
 }
 
+/*
+Formats a complete array, including the special case of an empty dynamic array.
+*/
 static int format_array_value_to_string(const ArrayValue *array, StringBuilder *sb)
 {
     if (array == NULL || sb == NULL) {
@@ -873,6 +994,11 @@ static int format_array_value_to_string(const ArrayValue *array, StringBuilder *
     return format_array_recursive_to_string(array, 0, 0, sb);
 }
 
+/*
+Looks up one multidimensional array element and appends its formatted value.
+The array module owns bounds checking; this helper translates failure into the
+interpreter's runtime error message.
+*/
 static int format_array_element_to_string(const ArrayValue *array, const long *indices, size_t index_count, StringBuilder *sb)
 {
     int error = 0;
@@ -887,6 +1013,11 @@ static int format_array_element_to_string(const ArrayValue *array, const long *i
     return format_value_to_string(value, sb);
 }
 
+/*
+Expands {name} and explicit array references inside a print or input prompt.
+Array references are parsed and formatted separately so whole arrays, selected
+elements, and scalar values retain their language-specific rules.
+*/
 static char *interpolate_template(const char *template, Environment *environment)
 {
     char *result;
@@ -1077,6 +1208,11 @@ static char *interpolate_template(const char *template, Environment *environment
     return result;
 }
 
+/*
+Resolves an input target when the caller needs its current value. Missing input
+targets are represented as an empty string so the input subsystem can populate
+them consistently.
+*/
 static int resolve_input_target_name(const char *target_name, Environment *environment, Value *out_value)
 {
     if (target_name == NULL || out_value == NULL) {
@@ -1090,6 +1226,11 @@ static int resolve_input_target_name(const char *target_name, Environment *envir
     return 1;
 }
 
+/*
+Executes one already-parsed statement. This is the interpreter's main dispatch
+boundary: each branch evaluates runtime data, updates the environment, and
+returns nonzero as soon as a child statement or runtime operation fails.
+*/
 int interpreter_execute(Statement statement, Environment *environment)
 {
     if (environment == NULL) {
@@ -1097,6 +1238,7 @@ int interpreter_execute(Statement statement, Environment *environment)
         return 1;
     }
 
+    /* Input prompts are interpolated before the input subsystem stores values. */
     if (statement.type == STATEMENT_INPUT) {
         InputStatement *input_statement = &statement.as.input_statement;
 
@@ -1140,6 +1282,7 @@ int interpreter_execute(Statement statement, Environment *environment)
         return 0;
     }
 
+    /* Print supports expressions, scalar references, templates, and explicit array access. */
     if (statement.type == STATEMENT_PRINT) {
         PrintStatement *print_statement = &statement.as.print_statement;
         Value value;
@@ -1271,6 +1414,7 @@ int interpreter_execute(Statement statement, Environment *environment)
         return 0;
     }
 
+    /* Conditions are evaluated in order; the first truthy branch owns execution. */
     if (statement.type == STATEMENT_IF) {
         IfStatement *if_statement = &statement.as.if_statement;
         char *condition_text = NULL;
@@ -1282,6 +1426,7 @@ int interpreter_execute(Statement statement, Environment *environment)
             return 1;
         }
 
+        // 
         for (size_t i = 0; i < if_statement->branch_count; ++i) {
             condition_text = if_statement->branches[i].condition_text;
             if (condition_text == NULL || condition_text[0] == '\0') {
@@ -1323,6 +1468,7 @@ int interpreter_execute(Statement statement, Environment *environment)
         return 0;
     }
 
+    /* Repeat supports finite ranges, exclusive bounds, custom steps, and an infinite form. */
     if (statement.type == STATEMENT_REPEAT) {
         RepeatStatement *repeat_statement = &statement.as.repeat_statement;
         long start = 0;
@@ -1341,6 +1487,7 @@ int interpreter_execute(Statement statement, Environment *environment)
             return 1;
         }
 
+        /* Infinite loops still use a configured counter step, but deliberately have no bound check. */
         if (repeat_statement->is_infinite) {
             start = 0;
             if (repeat_statement->has_step) {
@@ -1425,6 +1572,7 @@ int interpreter_execute(Statement statement, Environment *environment)
             value_free(&loop_value);
         }
 
+        /* A step expression may be shorthand involving the counter or a regular integer expression. */
         if (repeat_statement->has_step) {
             char *step_expr = repeat_statement->step_text;
             if (step_expr != NULL && step_expr[0] != '\0') {
@@ -1476,6 +1624,7 @@ int interpreter_execute(Statement statement, Environment *environment)
             return 1;
         }
 
+        /* Select the loop condition from the range's bound mode while preserving step direction. */
         if (repeat_statement->is_exclusive_upper) {
             for (long i = start; (step > 0) ? (i < end) : (i > end); i += step) {
                 Value counter_value = value_create_integer(i);
@@ -1532,6 +1681,7 @@ int interpreter_execute(Statement statement, Environment *environment)
         return 0;
     }
 
+    /* Declarations and assignments share this path so every stored value enters the environment uniformly. */
     if (statement.type == STATEMENT_VARIABLE_DECLARATION) {
         VariableDeclaration *declaration = &statement.as.variable_declaration;
 
@@ -1552,6 +1702,7 @@ int interpreter_execute(Statement statement, Environment *environment)
                 return 1;
             }
 
+            /* Array element assignment mutates a copied array, then replaces the environment binding. */
             if (single->is_array_element_assignment) {
                 Value array_value;
                 long *indices = NULL;
@@ -1586,6 +1737,7 @@ int interpreter_execute(Statement statement, Environment *environment)
                 return 1;
             }
 
+            /* Input declarations either store into an explicit target or use the declared name. */
             if (single->is_input_expression) {
                 Value prompt_value = value_create_null();
                 char *resolved_prompt = NULL;
@@ -1614,6 +1766,7 @@ int interpreter_execute(Statement statement, Environment *environment)
                 }
 
                 free(resolved_prompt);
+            /* Ordinary declarations evaluate their expression at execution time. */
             } else if (single->has_expression) {
                 int expr_ok = 0;
                 Value expr_value = evaluate_expression_text(environment, single->expression_text, &expr_ok);
@@ -1622,6 +1775,7 @@ int interpreter_execute(Statement statement, Environment *environment)
                     return 1;
                 }
                 value = expr_value;
+            /* Compound assignments read the current value, apply the selected operator, and replace it. */
             } else if (single->is_assignment && single->has_assignment_operator) {
                 Value current_value = value_create_null();
                 if (!environment_get(environment, single->name, &current_value)) {
@@ -1668,6 +1822,7 @@ int interpreter_execute(Statement statement, Environment *environment)
                     value_free(&current_value);
                     value_free(&rhs);
                 }
+            /* A multi-value select becomes a dynamic array; a single selection remains scalar. */
             } else if (single->is_assignment && single->is_array_expression) {
                 Value source;
                 if (!environment_get(environment, single->array_access.name, &source)) {
@@ -1745,6 +1900,7 @@ int interpreter_execute(Statement statement, Environment *environment)
 
                     value = value_create_array(dynamic_array);
                 }
+            /* Array references on the right-hand side copy either one selected element or one indexed value. */
             } else if (single->is_assignment && single->array_access.name != NULL) {
                 Value source;
                 if (!environment_get(environment, single->array_access.name, &source)) {

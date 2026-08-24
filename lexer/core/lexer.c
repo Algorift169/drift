@@ -1,3 +1,5 @@
+/* The lexer owns its cursor and emits one token at a time; callers release token-owned text after parsing. */
+
 #include <ctype.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -8,26 +10,31 @@
 #include "drift/logical_keywords.h"
 #include "drift/lexer.h"
 
+/* Identifies horizontal whitespace that can separate tokens without ending a line. */
 static int is_space(char c)
 {
     return c == ' ' || c == '\t' || c == '\r';
 }
 
+/* Identifies line boundaries so token locations and statement separation stay aligned. */
 static int is_newline(char c)
 {
     return c == '\n';
 }
 
+/* Checks whether a character may begin a Drift identifier. */
 static int is_identifier_start(char c)
 {
     return isalpha((unsigned char)c) || c == '_';
 }
 
+/* Checks whether a character may continue an identifier after its first character. */
 static int is_identifier_part(char c)
 {
     return isalnum((unsigned char)c) || c == '_' || c == '-';
 }
 
+/* Packages a token type with already-owned text without duplicating that text. */
 static Token make_token(TokenType type, char *value)
 {
     Token token;
@@ -36,6 +43,7 @@ static Token make_token(TokenType type, char *value)
     return token;
 }
 
+/* Copies source text and initializes all cursor and comment-tracking fields. */
 Lexer lexer_create(const char *source)
 {
     Lexer lexer;
@@ -54,6 +62,7 @@ Lexer lexer_create(const char *source)
     return lexer;
 }
 
+/* Advances past separators while preserving newlines needed by the parser. */
 static void skip_whitespace(Lexer *lexer)
 {
     while (lexer->index < lexer->length && is_space(lexer->source[lexer->index])) {
@@ -61,6 +70,7 @@ static void skip_whitespace(Lexer *lexer)
     }
 }
 
+/* Consumes an identifier, then maps reserved spellings to keyword tokens. */
 static Token read_identifier(Lexer *lexer)
 {
     size_t start = lexer->index;
@@ -160,6 +170,7 @@ static Token read_identifier(Lexer *lexer)
     return make_token(TOKEN_IDENTIFIER, value);
 }
 
+/* Consumes an integer or decimal literal and rejects malformed numeric text. */
 static Token read_number(Lexer *lexer)
 {
     size_t start = lexer->index;
@@ -210,6 +221,7 @@ static Token read_number(Lexer *lexer)
     return make_token(TOKEN_INTEGER, value);
 }
 
+/* Reads a single-quoted value using the language's quote and escape rules. */
 static Token read_single_quoted_value(Lexer *lexer)
 {
     size_t start = lexer->index;
@@ -257,6 +269,7 @@ static Token read_single_quoted_value(Lexer *lexer)
     return make_token(TOKEN_STRING, value);
 }
 
+/* Reads a double-quoted string while advancing over escapes and its closing quote. */
 static Token read_string(Lexer *lexer)
 {
     size_t start = lexer->index;

@@ -1,3 +1,5 @@
+/* Array parsing records dimensions before elements so flat storage and index arity remain consistent. */
+
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>

@@ -1,3 +1,5 @@
+/* Conditional parsing builds an ordered branch chain; each recursive arm consumes exactly its own block. */
+
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>

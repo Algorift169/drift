@@ -1,3 +1,14 @@
+/* Values centralize type tags, deep copies, and destruction so
+ arrays and strings have one ownership policy. Nothing else should free 
+or copy these payloads directly. ANd the Value structure is used to 
+represent all types of values in the Drift programming language, including integers, 
+floats, strings, booleans, null, infinity, and arrays. Each Value instance contains 
+a type tag indicating the kind of value it represents, along with 
+the corresponding payload for that type. The Value structure provides a 
+consistent way to manage and manipulate values in the interpreter,
+*/
+ */
+
 #include <math.h>
 #include <stdlib.h>
 #include <string.h>
@@ -5,6 +16,7 @@
 #include "drift/array_value.h"
 #include "drift/value.h"
 
+/* Builds an integer value and clears unrelated payload fields for predictable ownership. */
 Value value_create_integer(long value)
 {
     Value result;
@@ -17,6 +29,7 @@ Value value_create_integer(long value)
     return result;
 }
 
+/* Builds a floating-point value while leaving string and array ownership empty. */
 Value value_create_float(double value)
 {
     Value result;
@@ -29,6 +42,7 @@ Value value_create_float(double value)
     return result;
 }
 
+/* Allocates a private copy of string text so callers may release their input independently. */
 Value value_create_string(const char *value)
 {
     Value result;
@@ -39,7 +53,7 @@ Value value_create_string(const char *value)
     result.string_value = NULL;
 
     if (value != NULL) {
-        size_t length = strlen(value);
+        size_t length = strlen(value); // Measure the source before allocating its terminator.
         result.string_value = (char *)malloc(length + 1U);
         if (result.string_value != NULL) {
             memcpy(result.string_value, value, length + 1U);
@@ -51,6 +65,7 @@ Value value_create_string(const char *value)
     return result;
 }
 
+/* Stores the language boolean payload without borrowing memory from the caller. */
 Value value_create_boolean(int value)
 {
     Value result;
@@ -63,6 +78,7 @@ Value value_create_boolean(int value)
     return result;
 }
 
+/* Returns the sentinel value used when no scalar payload is present. */
 Value value_create_null(void)
 {
     Value result;
@@ -75,6 +91,7 @@ Value value_create_null(void)
     return result;
 }
 
+/* Represents positive infinity using the host floating-point constant. */
 Value value_create_infinity(void)
 {
     Value result;
@@ -87,6 +104,7 @@ Value value_create_infinity(void)
     return result;
 }
 
+/* Wraps an array pointer and records it as the identity used by comparisons. */
 Value value_create_array(ArrayValue *value)
 {
     Value result;
@@ -100,6 +118,7 @@ Value value_create_array(ArrayValue *value)
     return result;
 }
 
+/* Deep-copies owned strings and arrays while preserving scalar type and identity rules. */
 Value value_copy(const Value *value)
 {
     Value result;
@@ -108,6 +127,7 @@ Value value_copy(const Value *value)
         return value_create_string(NULL);
     }
 
+    // Select the copy routine from the active tag so only the relevant payload is duplicated.
     switch (value->type) {
         case VALUE_INTEGER:
             result = value_create_integer(value->integer_value);
@@ -145,13 +165,14 @@ Value value_copy(const Value *value)
     return result;
 }
 
+/* Releases every payload owned by value, then resets it to a reusable null state. */
 void value_free(Value *value)
 {
     if (value == NULL) {
         return;
     }
 
-    if (value->type == VALUE_ARRAY) {
+    if (value->type == VALUE_ARRAY) { // Arrays own nested values and must be freed recursively.
         array_value_free(value->array_value);
         value->array_value = NULL;
     }

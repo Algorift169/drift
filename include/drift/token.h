@@ -1,8 +1,18 @@
+/* Tokens carry lexical spans and values across the lexer-parser boundary; callers release them explicitly. */
+
 #ifndef DRIFT_TOKEN_H
 #define DRIFT_TOKEN_H
 
 #include <stddef.h>
 
+/*
+ The TokenType enumeration defines the different types of tokens 
+ that can be recognized by the lexer. Each token type corresponds 
+ to a specific kind of lexical element in the source code, 
+such as keywords, operators, literals, and punctuation. 
+The enumeration provides a comprehensive set of token types to facilitate
+the parsing and interpretation of the source code in the Drift programming language.
+*/
 typedef enum {
     TOKEN_SAY,
     TOKEN_ASK,
@@ -73,12 +83,17 @@ typedef enum {
     TOKEN_UNKNOWN
 } TokenType;
 
+// The Token structure represents a single token in the source code,
+// containing its type and associated value. The value is a string that
+// holds the actual text of the token, which can be used for 
+// further processing or analysis during parsing and interpretation.
 typedef struct {
     TokenType type;
     char *value;
 } Token;
 
 char *drift_duplicate_string(const char *value);
+/* Releases each token string and then the token array that owns those strings. */
 void token_free_array(Token *tokens, size_t count);
 
 #endif

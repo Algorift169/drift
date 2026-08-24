@@ -1,3 +1,5 @@
+/* Operator APIs accept immutable operands and return owned Value results for evaluation. */
+
 #ifndef DRIFT_OPERATOR_H
 #define DRIFT_OPERATOR_H
 

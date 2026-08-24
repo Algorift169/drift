@@ -1,8 +1,11 @@
+/* Token construction transfers text ownership into token storage and destruction releases it exactly once. */
+
 #include <stdlib.h>
 #include <string.h>
 
 #include "drift/token.h"
 
+/* Allocates and copies token text so token storage owns its input independently. */
 char *drift_duplicate_string(const char *value)
 {
     size_t length;
@@ -13,7 +16,7 @@ char *drift_duplicate_string(const char *value)
     }
 
     length = strlen(value);
-    copy = (char *)malloc(length + 1U);
+    copy = (char *)malloc(length + 1U); // Reserve space for text and its terminator.
     if (copy == NULL) {
         return NULL;
     }
@@ -22,6 +25,7 @@ char *drift_duplicate_string(const char *value)
     return copy;
 }
 
+/* Frees token text first, then the containing array that owns the token records. */
 void token_free_array(Token *tokens, size_t count)
 {
     size_t i;
@@ -30,7 +34,7 @@ void token_free_array(Token *tokens, size_t count)
         return;
     }
 
-    for (i = 0; i < count; ++i) {
+    for (i = 0; i < count; ++i) { // Each token owns only its value string here.
         free(tokens[i].value);
     }
 

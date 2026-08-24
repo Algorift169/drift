@@ -1,3 +1,5 @@
+/* Repeat parsing distinguishes range and infinite forms while preserving loop bounds for execution. */
+
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>

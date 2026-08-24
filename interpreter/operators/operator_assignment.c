@@ -1,9 +1,14 @@
+/* Assignment writes through the environment; the operator helper itself only evaluates immutable operands. */
+
 #include <stdio.h>
 
 #include "drift/operator.h"
 
+/* Validates assignment operands while leaving environment mutation to the interpreter. */
 Value operator_apply(OperatorType op, const Value *left, const Value *right)
 {
+    /* Assignment operators return the value that the interpreter should use;
+       this standalone helper never writes to the environment. */
     Value result = value_create_null();
 
     if (op == OPERATOR_ADD_ASSIGN || op == OPERATOR_SUBTRACT_ASSIGN ||
@@ -13,8 +18,7 @@ Value operator_apply(OperatorType op, const Value *left, const Value *right)
             fprintf(stderr, "Runtime Error: Assignment operators require operands.\n");
             return result;
         }
-        // Note: Assignment is handled at parser/interpreter level
-        // This function is for evaluation context only
+        // Compound assignment is handled at parser/interpreter level.
         result = *left;
     } else if (op == OPERATOR_AND_ASSIGN || op == OPERATOR_OR_ASSIGN ||
                op == OPERATOR_XOR_ASSIGN || op == OPERATOR_SHIFT_LEFT_ASSIGN ||
@@ -23,7 +27,7 @@ Value operator_apply(OperatorType op, const Value *left, const Value *right)
             fprintf(stderr, "Runtime Error: Bitwise assignment operators require operands.\n");
             return result;
         }
-        // Note: Assignment is handled at parser/interpreter level
+        // Bitwise assignment is handled at parser/interpreter level.
         result = *left;
     } else if (op == OPERATOR_ASSIGN) {
         if (right == NULL) {

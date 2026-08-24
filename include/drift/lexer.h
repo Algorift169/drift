@@ -1,3 +1,5 @@
+/* Lexer contracts expose tokenization state while retaining ownership of source-backed text. */
+
 #ifndef DRIFT_LEXER_H
 #define DRIFT_LEXER_H
 
@@ -13,6 +15,7 @@ typedef struct {
     int in_block_comment_code;
 } Lexer;
 
+/* Copies source text and initializes lexer position and comment state. */
 Lexer lexer_create(const char *source);
 Token *lexer_scan_all(Lexer *lexer, size_t *token_count);
 

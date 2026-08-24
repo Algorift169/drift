@@ -1,3 +1,5 @@
+/* Statement nodes preserve parsed control-flow structure until the interpreter executes it. */
+
 #ifndef DRIFT_STATEMENT_H
 #define DRIFT_STATEMENT_H
 
@@ -5,6 +7,13 @@
 
 struct Statement;
 
+// PrintStatement represents a print statement in the AST.
+// But it also represents a variable declaration statement, since the
+// variable declaration statement is a special case of the print statement.
+// SO the print statement is used to represent both print statements and variable
+// declaration statements.
+// The is_variable_reference field indicates whether the value is 
+// a variable reference or a literal value. If it is a variable reference
 typedef struct {
     char *condition_text;
     struct Statement *body;
