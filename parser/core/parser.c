@@ -1462,6 +1462,22 @@ Statement parser_parse(Parser *parser)
         return statement;
     }
 
+    if (token->type == TOKEN_FOR) {
+        // Delegate three-clause for parsing to its dedicated control-flow parser.
+        if (!parse_for_statement(parser, &statement)) {
+            return statement;
+        }
+        return statement;
+    }
+
+    if (token->type == TOKEN_WHILE) {
+        // Delegate condition and body parsing to the dedicated while parser.
+        if (!parse_while_statement(parser, &statement)) {
+            return statement;
+        }
+        return statement;
+    }
+
     if (token->type == TOKEN_VAR) {
         // Parse one or more comma-separated declarations after 'var'.
         parser_advance(parser);

@@ -53,6 +53,7 @@ typedef struct {
 
 typedef struct {
     char *counter_name;
+    int declares_counter;
     int has_range;
     int has_step;
     int is_infinite;
@@ -64,5 +65,22 @@ typedef struct {
     struct Statement *body;
     size_t body_count;
 } RepeatStatement;
+
+/* Stores the three deferred clauses and body of a basic for loop. */
+typedef struct {
+    char *init_text;
+    int declares_counter;
+    char *condition_text;
+    char *increment_text;
+    struct Statement *body;
+    size_t body_count;
+} ForStatement;
+
+/* Stores a deferred condition and parsed body for a while loop. */
+typedef struct {
+    char *condition_text;
+    struct Statement *body;
+    size_t body_count;
+} WhileStatement;
 
 #endif

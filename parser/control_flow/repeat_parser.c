@@ -87,6 +87,10 @@ static void free_statement_list(Statement *body, size_t count)
             if_statement_free(&body[i].as.if_statement);
         } else if (body[i].type == STATEMENT_REPEAT) {
             repeat_statement_free(&body[i].as.repeat_statement);
+        } else if (body[i].type == STATEMENT_FOR) {
+            for_statement_free(&body[i].as.for_statement);
+        } else if (body[i].type == STATEMENT_WHILE) {
+            while_statement_free(&body[i].as.while_statement);
         }
     }
     free(body);
@@ -239,6 +243,7 @@ int parse_repeat_statement(Parser *parser, Statement *statement)
 
     if (token->type == TOKEN_VAR) {
         // Both repeat counter declaration forms accept an optional 'var'.
+        repeat_statement.declares_counter = 1;
         parser_advance(parser);
     }
 

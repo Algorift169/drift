@@ -93,6 +93,10 @@ static void free_statement_list(Statement *body, size_t count)
             if_statement_free(&body[i].as.if_statement);
         } else if (body[i].type == STATEMENT_REPEAT) {
             repeat_statement_free(&body[i].as.repeat_statement);
+        } else if (body[i].type == STATEMENT_FOR) {
+            for_statement_free(&body[i].as.for_statement);
+        } else if (body[i].type == STATEMENT_WHILE) {
+            while_statement_free(&body[i].as.while_statement);
         }
     }
 

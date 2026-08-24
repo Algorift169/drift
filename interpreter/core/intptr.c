@@ -1383,6 +1383,14 @@ int interpreter_execute(Statement statement, Environment *environment)
         return interpreter_execute_repeat(&statement.as.repeat_statement, environment);
     }
 
+    if (statement.type == STATEMENT_FOR) {
+        return interpreter_execute_for(&statement.as.for_statement, environment);
+    }
+
+    if (statement.type == STATEMENT_WHILE) {
+        return interpreter_execute_while(&statement.as.while_statement, environment);
+    }
+
 
     /* Declarations and assignments share this path so every stored value enters the environment uniformly. */
     if (statement.type == STATEMENT_VARIABLE_DECLARATION) {

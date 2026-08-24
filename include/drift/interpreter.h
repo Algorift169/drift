@@ -13,4 +13,8 @@ int interpreter_execute(Statement statement, Environment *environment);
 /* Evaluates expression text using the interpreter's existing expression rules. */
 Value interpreter_evaluate_expression(Environment *environment, const char *expression, int *ok);
 
+/* Executes the parsed basic for and while loop forms. */
+int interpreter_execute_for(ForStatement *for_statement, Environment *environment);
+int interpreter_execute_while(WhileStatement *while_statement, Environment *environment);
+
 #endif

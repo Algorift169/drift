@@ -127,6 +127,11 @@ int interpreter_execute_repeat(RepeatStatement *repeat_statement, Environment *e
         return 1;
     }
 
+    if (!repeat_statement->declares_counter && !environment_exists(environment, repeat_statement->counter_name)) {
+        fprintf(stderr, "Runtime Error: Loop variable '%s' must be declared with 'var' or before the loop.\n", repeat_statement->counter_name);
+        return 1;
+    }
+
     if (!repeat_statement->has_range) {
         // The parser can represent this form, but the runtime currently requires a range header.
         fprintf(stderr, "Runtime Error: Repeat without a range is not supported yet.\n");

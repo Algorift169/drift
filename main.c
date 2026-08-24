@@ -163,6 +163,10 @@ static void statement_free(Statement *statement)
         if_statement_free(&statement->as.if_statement);
     } else if (statement->type == STATEMENT_REPEAT) {
         repeat_statement_free(&statement->as.repeat_statement);
+    } else if (statement->type == STATEMENT_FOR) {
+        for_statement_free(&statement->as.for_statement);
+    } else if (statement->type == STATEMENT_WHILE) {
+        while_statement_free(&statement->as.while_statement);
     }
 }
 

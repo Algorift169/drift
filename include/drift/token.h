@@ -21,6 +21,8 @@ typedef enum {
     TOKEN_ELIF,
     TOKEN_ELSE,
     TOKEN_REPEAT,
+    TOKEN_FOR,
+    TOKEN_WHILE,
     TOKEN_END,
     TOKEN_AT,
     TOKEN_IN,
