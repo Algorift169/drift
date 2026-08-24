@@ -7,7 +7,6 @@ a type tag indicating the kind of value it represents, along with
 the corresponding payload for that type. The Value structure provides a 
 consistent way to manage and manipulate values in the interpreter,
 */
- */
 
 #include <math.h>
 #include <stdlib.h>

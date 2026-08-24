@@ -23,6 +23,7 @@ reporting mechanisms to indicate when an operation fails due to invalid indices 
 #include "drift/lexer.h"
 #include "drift/operator_ternary.h"
 #include "drift/parser.h"
+#include "drift/repeat.h"
 
 /*
 We take a structure approach to managing integer pointers, which represent multi-dimensional indices 
@@ -147,84 +148,6 @@ static int format_array_recursive_to_string(const ArrayValue *array, size_t dime
 // The function recursively formats a multi-dimensional array into a string representation, handling each dimension and its elements appropriately.
 static int format_array_element_to_string(const ArrayValue *array, const long *indices, size_t index_count, StringBuilder *sb);
 // The function formats a specific element of an array into a string representation based on the provided indices.
-static void strip_whitespace(char *text);
-// The function removes leading and trailing whitespace from a string in place, modifying the original string. It uses pointers to identify the start and end 
-// of the non-whitespace portion of the string, and then shifts the characters accordingly to eliminate
-static int parse_counter_step_expression(const char *step_expr, const char *counter_name, long *out_step);
-
-/*
-Parses the shorthand used by repeat steps, such as counter++, ++counter, or
-counter-2. A return value of 1 means the expression directly describes a step;
-otherwise the caller must evaluate it as a normal expression.
-*/
-static int parse_counter_step_expression(const char *step_expr, const char *counter_name, long *out_step)
-{
-    char *normalized = NULL;
-    size_t name_length = 0;
-    char *suffix = NULL;
-    char *end_ptr = NULL;
-    long number = 0;
-
-    if (step_expr == NULL || counter_name == NULL || out_step == NULL) {
-        return 0;
-    }
-
-    normalized = drift_duplicate_string(step_expr);
-    if (normalized == NULL) {
-        return 0;
-    }
-    strip_whitespace(normalized);
-    name_length = strlen(counter_name);
-
-    if (strncmp(normalized, counter_name, name_length) == 0) {
-        suffix = normalized + name_length;
-        if (strcmp(suffix, "++") == 0) {
-            *out_step = 1;
-            free(normalized);
-            return 1;
-        }
-        if (strcmp(suffix, "--") == 0) {
-            *out_step = -1;
-            free(normalized);
-            return 1;
-        }
-        if (suffix[0] == '+' || suffix[0] == '-') {
-            errno = 0;
-            number = strtol(suffix + 1, &end_ptr, 10);
-            if (errno == 0 && end_ptr != suffix + 1 && *end_ptr == '\0') {
-                *out_step = (suffix[0] == '+') ? number : -number;
-                free(normalized);
-                return 1;
-            }
-        }
-    }
-
-    if (strncmp(normalized, "++", 2) == 0 && strcmp(normalized + 2, counter_name) == 0) {
-        *out_step = 1;
-        free(normalized);
-        return 1;
-    }
-    if (strncmp(normalized, "--", 2) == 0 && strcmp(normalized + 2, counter_name) == 0) {
-        *out_step = -1;
-        free(normalized);
-        return 1;
-    }
-
-    if (strncmp(normalized, counter_name, name_length) == 0 && normalized[name_length] == '+' && normalized[name_length + 1] == '+') {
-        *out_step = 1;
-        free(normalized);
-        return 1;
-    }
-    if (strncmp(normalized, counter_name, name_length) == 0 && normalized[name_length] == '-' && normalized[name_length + 1] == '-') {
-        *out_step = -1;
-        free(normalized);
-        return 1;
-    }
-
-    free(normalized);
-    return 0;
-}
-
 /*
 Copies literal array indices and resolves indices written as variable names.
 The returned array belongs to the caller and must be released with free().
@@ -408,24 +331,6 @@ static int value_is_truthy(const Value *value)
         return value->array_value != NULL && value->array_value->length > 0;
     }
     return 0;
-}
-
-static void strip_whitespace(char *text)
-{
-    char *read = text;
-    char *write = text;
-
-    if (text == NULL) {
-        return;
-    }
-
-    while (*read != '\0') {
-        if (*read != ' ' && *read != '\t' && *read != '\n' && *read != '\r') {
-            *write++ = *read;
-        }
-        read++;
-    }
-    *write = '\0';
 }
 
 /*
@@ -857,6 +762,11 @@ static Value evaluate_expression_text(Environment *environment, const char *expr
 
     token_free_array(tokens, token_count);
     return result;
+}
+
+Value interpreter_evaluate_expression(Environment *environment, const char *expression, int *ok)
+{
+    return evaluate_expression_text(environment, expression, ok);
 }
 
 /*
@@ -1468,218 +1378,11 @@ int interpreter_execute(Statement statement, Environment *environment)
         return 0;
     }
 
-    /* Repeat supports finite ranges, exclusive bounds, custom steps, and an infinite form. */
+    /* Repeat execution is implemented in the dedicated loop module. */
     if (statement.type == STATEMENT_REPEAT) {
-        RepeatStatement *repeat_statement = &statement.as.repeat_statement;
-        long start = 0;
-        long end = 0;
-        long step = 1;
-        int loop_ok = 0;
-        Value loop_value;
-
-        if (repeat_statement == NULL || repeat_statement->counter_name == NULL) {
-            fprintf(stderr, "Runtime Error: Invalid repeat statement.\n");
-            return 1;
-        }
-
-        if (!repeat_statement->has_range) {
-            fprintf(stderr, "Runtime Error: Repeat without a range is not supported yet.\n");
-            return 1;
-        }
-
-        /* Infinite loops still use a configured counter step, but deliberately have no bound check. */
-        if (repeat_statement->is_infinite) {
-            start = 0;
-            if (repeat_statement->has_step) {
-                char *step_expr = repeat_statement->step_text;
-                if (step_expr != NULL && step_expr[0] != '\0') {
-                    char *normalized = drift_duplicate_string(step_expr);
-                    if (normalized != NULL) {
-                        strip_whitespace(normalized);
-                    }
-                    if (normalized != NULL && parse_counter_step_expression(normalized, repeat_statement->counter_name, &step)) {
-                        /* handled */
-                    } else if (normalized != NULL) {
-                        Value current = value_create_integer(start);
-                        if (!environment_set(environment, repeat_statement->counter_name, &current)) {
-                            value_free(&current);
-                            free(normalized);
-                            fprintf(stderr, "Runtime Error: Unable to initialize loop variable '%s'.\n", repeat_statement->counter_name);
-                            return 1;
-                        }
-                        Value step_eval = evaluate_expression_text(environment, normalized, &loop_ok);
-                        value_free(&current);
-                        if (!loop_ok || step_eval.type != VALUE_INTEGER) {
-                            fprintf(stderr, "Runtime Error: Repeat step value must be an integer.\n");
-                            value_free(&step_eval);
-                            free(normalized);
-                            return 1;
-                        }
-                        step = step_eval.integer_value - start;
-                        value_free(&step_eval);
-                        if (step == 0) {
-                            fprintf(stderr, "Runtime Error: Repeat step cannot be zero.\n");
-                            free(normalized);
-                            return 1;
-                        }
-                    }
-                    free(normalized);
-                }
-            }
-
-            for (long i = start;; i += step) {
-                Value counter_value = value_create_integer(i);
-                if (!environment_set(environment, repeat_statement->counter_name, &counter_value)) {
-                    value_free(&counter_value);
-                    fprintf(stderr, "Runtime Error: Unable to update loop variable '%s'.\n", repeat_statement->counter_name);
-                    return 1;
-                }
-                value_free(&counter_value);
-
-                for (size_t j = 0; j < repeat_statement->body_count; ++j) {
-                    int result = interpreter_execute(repeat_statement->body[j], environment);
-                    if (result != 0) {
-                        return result;
-                    }
-                }
-            }
-            return 0;
-        }
-
-        if (repeat_statement->start_text == NULL || repeat_statement->start_text[0] == '\0') {
-            start = 0;
-        } else {
-            loop_value = evaluate_expression_text(environment, repeat_statement->start_text, &loop_ok);
-            if (!loop_ok || loop_value.type != VALUE_INTEGER) {
-                fprintf(stderr, "Runtime Error: Repeat start value must be an integer.\n");
-                value_free(&loop_value);
-                return 1;
-            }
-            start = loop_value.integer_value;
-            value_free(&loop_value);
-        }
-
-        if (repeat_statement->end_text == NULL || repeat_statement->end_text[0] == '\0') {
-            end = start;
-        } else {
-            loop_value = evaluate_expression_text(environment, repeat_statement->end_text, &loop_ok);
-            if (!loop_ok || loop_value.type != VALUE_INTEGER) {
-                fprintf(stderr, "Runtime Error: Repeat end value must be an integer.\n");
-                value_free(&loop_value);
-                return 1;
-            }
-            end = loop_value.integer_value;
-            value_free(&loop_value);
-        }
-
-        /* A step expression may be shorthand involving the counter or a regular integer expression. */
-        if (repeat_statement->has_step) {
-            char *step_expr = repeat_statement->step_text;
-            if (step_expr != NULL && step_expr[0] != '\0') {
-                char *normalized = drift_duplicate_string(step_expr);
-                if (normalized != NULL) {
-                    strip_whitespace(normalized);
-                }
-
-                if (normalized != NULL && parse_counter_step_expression(normalized, repeat_statement->counter_name, &step)) {
-                    /* handled */
-                } else if (normalized != NULL) {
-                    Value current = value_create_integer(start);
-                    if (!environment_set(environment, repeat_statement->counter_name, &current)) {
-                        value_free(&current);
-                        free(normalized);
-                        fprintf(stderr, "Runtime Error: Unable to initialize loop variable '%s'.\n", repeat_statement->counter_name);
-                        return 1;
-                    }
-                    Value step_eval = evaluate_expression_text(environment, normalized, &loop_ok);
-                    value_free(&current);
-                    if (!loop_ok || step_eval.type != VALUE_INTEGER) {
-                        fprintf(stderr, "Runtime Error: Repeat step value must be an integer.\n");
-                        value_free(&step_eval);
-                        free(normalized);
-                        return 1;
-                    }
-                    step = step_eval.integer_value - start;
-                    value_free(&step_eval);
-                    if (step == 0) {
-                        fprintf(stderr, "Runtime Error: Repeat step cannot be zero.\n");
-                        free(normalized);
-                        return 1;
-                    }
-                }
-                free(normalized);
-            }
-        } else if (repeat_statement->is_exclusive_upper) {
-            step = (start <= end) ? 1 : -1;
-        } else if (repeat_statement->is_exclusive_lower) {
-            step = (start >= end) ? -1 : 1;
-        } else if (start <= end) {
-            step = 1;
-        } else {
-            step = -1;
-        }
-
-        if (step == 0) {
-            fprintf(stderr, "Runtime Error: Repeat step cannot be zero.\n");
-            return 1;
-        }
-
-        /* Select the loop condition from the range's bound mode while preserving step direction. */
-        if (repeat_statement->is_exclusive_upper) {
-            for (long i = start; (step > 0) ? (i < end) : (i > end); i += step) {
-                Value counter_value = value_create_integer(i);
-                if (!environment_set(environment, repeat_statement->counter_name, &counter_value)) {
-                    value_free(&counter_value);
-                    fprintf(stderr, "Runtime Error: Unable to update loop variable '%s'.\n", repeat_statement->counter_name);
-                    return 1;
-                }
-                value_free(&counter_value);
-
-                for (size_t j = 0; j < repeat_statement->body_count; ++j) {
-                    int result = interpreter_execute(repeat_statement->body[j], environment);
-                    if (result != 0) {
-                        return result;
-                    }
-                }
-            }
-        } else if (repeat_statement->is_exclusive_lower) {
-            for (long i = start; i > end; i += step) {
-                Value counter_value = value_create_integer(i);
-                if (!environment_set(environment, repeat_statement->counter_name, &counter_value)) {
-                    value_free(&counter_value);
-                    fprintf(stderr, "Runtime Error: Unable to update loop variable '%s'.\n", repeat_statement->counter_name);
-                    return 1;
-                }
-                value_free(&counter_value);
-
-                for (size_t j = 0; j < repeat_statement->body_count; ++j) {
-                    int result = interpreter_execute(repeat_statement->body[j], environment);
-                    if (result != 0) {
-                        return result;
-                    }
-                }
-            }
-        } else {
-            for (long i = start; (step > 0) ? (i <= end) : (i >= end); i += step) {
-                Value counter_value = value_create_integer(i);
-                if (!environment_set(environment, repeat_statement->counter_name, &counter_value)) {
-                    value_free(&counter_value);
-                    fprintf(stderr, "Runtime Error: Unable to update loop variable '%s'.\n", repeat_statement->counter_name);
-                    return 1;
-                }
-                value_free(&counter_value);
-
-                for (size_t j = 0; j < repeat_statement->body_count; ++j) {
-                    int result = interpreter_execute(repeat_statement->body[j], environment);
-                    if (result != 0) {
-                        return result;
-                    }
-                }
-            }
-        }
-
-        return 0;
+        return interpreter_execute_repeat(&statement.as.repeat_statement, environment);
     }
+
 
     /* Declarations and assignments share this path so every stored value enters the environment uniformly. */
     if (statement.type == STATEMENT_VARIABLE_DECLARATION) {
