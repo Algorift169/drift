@@ -615,3 +615,203 @@ Token *lexer_scan_all(Lexer *lexer, size_t *token_count)
 
     return tokens;
 }
+
+
+/*
+lexer full workflow graph is something like this:
+lexer_scan_all()
+│
+├── Initialize token array
+│
+└── while (lexer->index < lexer->length)
+    │
+    ├── skip_whitespace()
+    │   └── Skip: ' '  '\t'  '\r'
+    │
+    ├── lexer_skip_comments()
+    │   │
+    │   ├── No comment
+    │   │   └── Continue lexical scanning
+    │   │
+    │   ├── Single-line comment
+    │   │   └── Skip comment → continue loop
+    │   │
+    │   ├── Block comment
+    │   │   └── Skip comment → continue loop
+    │   │
+    │   └── Comment error
+    │       └── Return NULL
+    │
+    ├── Check end of source
+    │   └── If reached → break
+    │
+    ├── Check newline
+    │   └── TOKEN_NEWLINE
+    │
+    └── Token dispatch based on current character
+        │
+        ├── '='
+        │   ├── '==' → TOKEN_EQUAL_EQUAL
+        │   └── '='  → TOKEN_EQUAL
+        │
+        ├── '+'
+        │   ├── '++' → TOKEN_PLUS_PLUS
+        │   ├── '+=' → TOKEN_PLUS_EQUAL
+        │   └── '+'  → TOKEN_PLUS
+        │
+        ├── '-'
+        │   ├── '--' → TOKEN_MINUS_MINUS
+        │   ├── '-=' → TOKEN_MINUS_EQUAL
+        │   └── '-'  → TOKEN_MINUS
+        │
+        ├── '*'
+        │   ├── '*=' → TOKEN_STAR_EQUAL
+        │   └── '*'  → TOKEN_STAR
+        │
+        ├── '/'
+        │   ├── '/=' → TOKEN_SLASH_EQUAL
+        │   └── '/'  → TOKEN_SLASH
+        │
+        ├── '%'
+        │   ├── '%=' → TOKEN_PERCENT_EQUAL
+        │   └── '%'  → TOKEN_PERCENT
+        │
+        ├── '!'
+        │   ├── '!=' → TOKEN_NOT_EQUAL
+        │   └── '!'  → TOKEN_BANG
+        │
+        ├── '<'
+        │   ├── '<='  → TOKEN_LESS_EQUAL
+        │   ├── '<<'  → TOKEN_SHIFT_LEFT
+        │   ├── '<<=' → TOKEN_SHIFT_LEFT_EQUAL
+        │   └── '<'   → TOKEN_LESS
+        │
+        ├── '>'
+        │   ├── '>='  → TOKEN_GREATER_EQUAL
+        │   ├── '>>'  → TOKEN_SHIFT_RIGHT
+        │   ├── '>>=' → TOKEN_SHIFT_RIGHT_EQUAL
+        │   └── '>'   → TOKEN_GREATER
+        │
+        ├── '&'
+        │   ├── '&&' → TOKEN_AND_AND
+        │   ├── '&=' → TOKEN_AMPERSAND_EQUAL
+        │   └── '&'  → TOKEN_AMPERSAND
+        │
+        ├── '|'
+        │   ├── '||' → TOKEN_OR_OR
+        │   ├── '|=' → TOKEN_PIPE_EQUAL
+        │   └── '|'  → TOKEN_PIPE
+        │
+        ├── '^'
+        │   ├── '^=' → TOKEN_CARET_EQUAL
+        │   └── '^'  → TOKEN_CARET
+        │
+        ├── '~'
+        │   └── TOKEN_TILDA
+        │
+        ├── '?'
+        │   └── TOKEN_QUESTION
+        │
+        ├── '.'
+        │   ├── '...' → TOKEN_RANGE
+        │   └── '.'   → TOKEN_DOT
+        │
+        ├── '@'
+        │   └── TOKEN_AT
+        │
+        ├── '{'
+        │   └── TOKEN_LEFT_BRACE
+        │
+        ├── '}'
+        │   └── TOKEN_RIGHT_BRACE
+        │
+        ├── '['
+        │   └── TOKEN_LEFT_BRACKET
+        │
+        ├── ']'
+        │   └── TOKEN_RIGHT_BRACKET
+        │
+        ├── '('
+        │   └── TOKEN_LEFT_PAREN
+        │
+        ├── ')'
+        │   └── TOKEN_RIGHT_PAREN
+        │
+        ├── ','
+        │   └── TOKEN_COMMA
+        │
+        ├── ':'
+        │   └── TOKEN_COLON
+        │
+        ├── ';'
+        │   └── TOKEN_SEMICOLON
+        │
+        ├── '\''
+        │   └── read_single_quoted_value()
+        │       ├── Find closing '\''
+        │       ├── Reject newline
+        │       ├── Reject unterminated string
+        │       └── TOKEN_STRING
+        │
+        ├── '"'
+        │   └── read_string()
+        │       ├── Find closing '"'
+        │       ├── Process \n
+        │       ├── Reject newline
+        │       ├── Reject unterminated string
+        │       └── TOKEN_STRING
+        │
+        ├── digit
+        │   └── read_number()
+        │       ├── Integer
+        │       │   └── TOKEN_INTEGER
+        │       │
+        │       └── Decimal
+        │           └── TOKEN_FLOAT
+        │
+        ├── identifier_start
+        │   └── read_identifier()
+        │       │
+        │       ├── Reserved keywords
+        │       │   ├── say
+        │       │   ├── ask
+        │       │   ├── var
+        │       │   ├── if
+        │       │   ├── elif
+        │       │   ├── else
+        │       │   ├── repeat
+        │       │   └── end
+        │       │
+        │       ├── Boolean literals
+        │       │   ├── true
+        │       │   └── false
+        │       │
+        │       ├── Special values
+        │       │   ├── NULL / null
+        │       │   └── INF / inf
+        │       │
+        │       ├── Logical keywords
+        │       │   └── logical_keyword_token_type()
+        │       │
+        │       ├── Identity keywords
+        │       │   └── identity_keyword_token_type()
+        │       │
+        │       └── Otherwise
+        │           └── TOKEN_IDENTIFIER
+        │
+        └── Unknown character
+            └── Syntax Error
+                └── Return NULL
+
+After loop
+│
+├── Check lexer->in_block_comment
+│   ├── Yes → Unterminated block comment → Return NULL
+│   └── No  → Continue
+│
+├── Append TOKEN_EOF
+│
+├── Set token_count
+│
+└── return tokens
+*/
