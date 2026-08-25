@@ -227,6 +227,7 @@ int parse_each_statement(Parser *parser, Statement *statement)
     return 1;
 }
 
+// We do  
 void each_statement_free(EachStatement *statement)
 {
     if (statement == NULL) {

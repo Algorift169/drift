@@ -1,12 +1,4 @@
-/* When execution compares one subject with ordered case values.  
-
-It evaluates the body of the first case whose value matches the subject. If no case matches, the
-    optional else body is executed. The when statement is useful for cases where you want to
-    evaluate a single expression and perform different actions based on its value, providing a clear
-    and concise way to express multiple conditional branches in your code. It is often used as an
-    alternative to if-else statements when you have multiple discrete values to compare against, 
-    making the code more readable and expressive.
-*/
+/* When execution compares one subject with ordered case values. */
 
 #include <stdio.h>
 
@@ -17,6 +9,7 @@ It evaluates the body of the first case whose value matches the subject. If no c
 
 static int execute_body(Statement *body, size_t count, Environment *environment)
 {
+    /* Execute a selected body and propagate runtime or control-flow results. */
     for (size_t i = 0; i < count; ++i) {
         int result = interpreter_execute(body[i], environment);
         if (result != DRIFT_EXECUTION_OK) {
@@ -31,6 +24,7 @@ static int execute_body(Statement *body, size_t count, Environment *environment)
 // corresponding case body is executed. If no match is found, the optional else body is executed.
 int interpreter_execute_when(WhenStatement *statement, Environment *environment)
 {
+    /* Evaluate the subject once, then execute the first matching case. */
     int ok = 0;
     int matched = 0;
     Value subject;
@@ -46,8 +40,6 @@ int interpreter_execute_when(WhenStatement *statement, Environment *environment)
         return DRIFT_EXECUTION_ERROR;
     }
 
-    // we go through each case in order and evaluate its value. If the value matches the subject, 
-    // we execute the corresponding body and return. If no case matches, we execute the else body.
     for (size_t i = 0; i < statement->case_count; ++i) {
         Value case_value = interpreter_evaluate_expression(environment, statement->cases[i].value_text, &ok);
         if (!ok) {
@@ -56,9 +48,7 @@ int interpreter_execute_when(WhenStatement *statement, Environment *environment)
             fprintf(stderr, "Runtime Error: Failed to evaluate when case '%s'.\n", statement->cases[i].value_text);
             return DRIFT_EXECUTION_ERROR;
         }
-        // We use the operator_apply function to compare the subject and case value for equality. If
-        // they are equal, we execute the corresponding body and return. If not, we continue to the
-        // next case.
+        /* Reuse the language equality operator for case matching. */
         Value comparison = operator_apply(OPERATOR_EQUAL_EQUAL, &subject, &case_value);
         matched = comparison.type == VALUE_BOOLEAN && comparison.boolean_value;
         value_free(&comparison);

@@ -1,6 +1,4 @@
-/* Unless runtime execution is kept separate from the general interpreter. The unless statement 
-is a conditional execution form that runs its body only if the condition evaluates to false. 
-*/
+/* Unless runtime execution is kept separate from the general interpreter. */
 
 #ifndef DRIFT_UNLESS_H
 #define DRIFT_UNLESS_H

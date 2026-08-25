@@ -1,4 +1,5 @@
-/* When parsing stores a subject, ordered case values, and an optional else body. */
+/* When parsing stores a subject, ordered case values, and an 
+optional else body. */
 
 #include <stdio.h>
 #include <stdlib.h>
@@ -8,23 +9,27 @@
 
 static Token *peek(Parser *parser)
 {
+    /* Inspect the current token without consuming it. */
     if (parser == NULL || parser->index >= parser->count) return NULL;
     return &parser->tokens[parser->index];
 }
 
 static Token *advance(Parser *parser)
 {
+    /* Consume and return the current token. */
     if (parser == NULL || parser->index >= parser->count) return NULL;
     return &parser->tokens[parser->index++];
 }
 
 static int terminator(Token *token)
 {
+    /* Newlines and semicolons separate headers from following statements. */
     return token != NULL && (token->type == TOKEN_NEWLINE || token->type == TOKEN_SEMICOLON);
 }
 
 static char *read_until(Parser *parser, TokenType stop)
 {
+    /* Rebuild a deferred expression until its structural delimiter. */
     char *result = NULL;
     size_t length = 0;
     while (peek(parser) != NULL && peek(parser)->type != stop && peek(parser)->type != TOKEN_EOF && !terminator(peek(parser))) {
@@ -52,6 +57,7 @@ static char *read_until(Parser *parser, TokenType stop)
 
 static void append_statement(Statement **items, size_t *count, size_t *capacity, Statement statement)
 {
+    /* Grow a statement list while preserving source order. */
     if (*count >= *capacity) {
         size_t new_capacity = *capacity == 0U ? 4U : *capacity * 2U;
         Statement *new_items = (Statement *)realloc(*items, new_capacity * sizeof(Statement));
@@ -67,6 +73,7 @@ static void append_statement(Statement **items, size_t *count, size_t *capacity,
 
 static void free_statement_list(Statement *body, size_t count)
 {
+    /* Release nested statements through their matching destructors. */
     if (body == NULL) return;
     for (size_t i = 0; i < count; ++i) {
         switch (body[i].type) {
@@ -87,6 +94,7 @@ static void free_statement_list(Statement *body, size_t count)
 
 static int parse_body(Parser *parser, size_t indentation, Statement **out_body, size_t *out_count)
 {
+    /* Collect statements deeper than the current case or else header. */
     Statement *body = NULL;
     size_t count = 0;
     size_t capacity = 0;
@@ -106,7 +114,7 @@ static int parse_body(Parser *parser, size_t indentation, Statement **out_body, 
 
 int parse_when_statement(Parser *parser, Statement *statement)
 {
-    /* Parse `when subject:` followed by case and optional else blocks. */
+    /* Parse `when subject:` followed by ordered cases and an optional else. */
     WhenStatement when_statement;
     size_t when_indentation;
     Token *token;

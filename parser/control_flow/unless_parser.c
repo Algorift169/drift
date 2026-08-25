@@ -1,4 +1,4 @@
-/* Unless parsing stores an inverted condition and collects its indented body. */
+/* Unless parsing stores one deferred condition and its indented body. */
 
 #include <stdio.h>
 #include <stdlib.h>
@@ -9,7 +9,8 @@
 static Token *parser_peek(Parser *parser)
 {
     /* Inspect the current token without consuming it. */
-    if (parser == NULL || parser->index >= parser->count) {
+    if (parser == NULL || parser->index >= parser->count) 
+    {
         return NULL;
     }
     return &parser->tokens[parser->index];
@@ -32,7 +33,7 @@ static int is_statement_terminator(Token *token)
 
 static char *read_expression(Parser *parser)
 {
-    /* Rebuild the deferred condition until the header colon. */
+    /* Rebuild the condition so the interpreter can evaluate it later. */
     char *result = NULL;
     size_t length = 0;
 
@@ -68,7 +69,7 @@ static char *read_expression(Parser *parser)
 
 static void append_statement(Statement **items, size_t *count, size_t *capacity, Statement statement)
 {
-    /* Grow the body list while preserving source order. */
+    /* Grow the body list geometrically while preserving source order. */
     if (*count >= *capacity) {
         size_t new_capacity = *capacity == 0U ? 4U : *capacity * 2U;
         Statement *new_items = (Statement *)realloc(*items, new_capacity * sizeof(Statement));
@@ -107,7 +108,7 @@ static void free_statement_list(Statement *body, size_t count)
 
 int parse_unless_statement(Parser *parser, Statement *statement)
 {
-    /* Parse `unless condition:` and its indentation-delimited body. */
+    /* Parse `unless condition:` until dedentation or an explicit end. */
     UnlessStatement unless_statement;
     Statement *body = NULL;
     size_t body_count = 0;

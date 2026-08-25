@@ -1,8 +1,4 @@
-/* When runtime execution is kept separate from the general interpreter. The when statement 
-is a conditional execution form that evaluates a subject expression and runs the body of the 
-first case whose condition matches the subject. If no case matches, the optional else body is
-executed.
-*/
+/* When runtime execution is kept separate from the general interpreter. */
 
 #ifndef DRIFT_WHEN_H
 #define DRIFT_WHEN_H
