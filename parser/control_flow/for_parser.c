@@ -83,6 +83,10 @@ static void free_statement_list(Statement *body, size_t count)
             // with the WhileStatement, including its body statements and any dynamically allocated strings.
         } else if (body[i].type == STATEMENT_EACH) {
             each_statement_free(&body[i].as.each_statement);
+            } else if (body[i].type == STATEMENT_UNLESS) {
+                unless_statement_free(&body[i].as.unless_statement);
+            } else if (body[i].type == STATEMENT_WHEN) {
+                when_statement_free(&body[i].as.when_statement);
         }
     }
     free(body);

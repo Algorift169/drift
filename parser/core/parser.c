@@ -1487,6 +1487,20 @@ Statement parser_parse(Parser *parser)
         return statement;
     }
 
+    if (token->type == TOKEN_UNLESS) {
+        if (!parse_unless_statement(parser, &statement)) {
+            return statement;
+        }
+        return statement;
+    }
+
+    if (token->type == TOKEN_WHEN) {
+        if (!parse_when_statement(parser, &statement)) {
+            return statement;
+        }
+        return statement;
+    }
+
     if (token->type == TOKEN_BREAK || token->type == TOKEN_CONTINUE) {
         // Loop control statements carry no payload; consume the keyword and its terminator.
         statement.type = token->type == TOKEN_BREAK ? STATEMENT_BREAK : STATEMENT_CONTINUE;

@@ -1,0 +1,16 @@
+var logged_in = false
+unless logged_in:
+    say "Please log in"
+end
+
+var ready = true
+unless ready:
+    say "not ready"
+end
+
+var enabled = false
+if enabled:
+    say "should not print"
+else:
+    say "disabled"
+end

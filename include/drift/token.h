@@ -23,6 +23,8 @@ typedef enum {
     TOKEN_REPEAT,
     TOKEN_FOR,
     TOKEN_WHILE,
+    TOKEN_UNLESS,
+    TOKEN_WHEN,
     TOKEN_BREAK,
     TOKEN_CONTINUE,
     TOKEN_EACH,

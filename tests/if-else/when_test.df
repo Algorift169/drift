@@ -1,0 +1,19 @@
+var day = 3
+when day:
+    1:
+        say "Monday"
+    2:
+        say "Tuesday"
+    3:
+        say "Wednesday"
+    else:
+        say "Not a valid day"
+end
+
+var other_day = 8
+when other_day:
+    1:
+        say "Monday"
+    else:
+        say "Unknown day"
+end

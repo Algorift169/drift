@@ -206,6 +206,10 @@ static void statement_free(Statement *statement)
         while_statement_free(&statement->as.while_statement);
     } else if (statement->type == STATEMENT_EACH) {
         each_statement_free(&statement->as.each_statement);
+    } else if (statement->type == STATEMENT_UNLESS) {
+        unless_statement_free(&statement->as.unless_statement);
+    } else if (statement->type == STATEMENT_WHEN) {
+        when_statement_free(&statement->as.when_statement);
     }
 }
 

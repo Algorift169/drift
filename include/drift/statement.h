@@ -37,7 +37,9 @@ typedef enum {
     STATEMENT_WHILE,
     STATEMENT_BREAK,
     STATEMENT_CONTINUE,
-    STATEMENT_EACH
+    STATEMENT_EACH,
+    STATEMENT_UNLESS,
+    STATEMENT_WHEN
 } StatementType;
 
 typedef struct Statement {
@@ -51,6 +53,8 @@ typedef struct Statement {
         ForStatement for_statement;
         WhileStatement while_statement;
         EachStatement each_statement; // Added EachStatement to the union to represent each statements in the AST.
+        UnlessStatement unless_statement;
+        WhenStatement when_statement;
     } as;
 } Statement;
 

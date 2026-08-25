@@ -158,6 +158,16 @@ static Token read_identifier(Lexer *lexer)
         return make_token(TOKEN_WHILE, drift_duplicate_string("while"));
     }
 
+    if (strcmp(value, "unless") == 0) {
+        free(value);
+        return make_token(TOKEN_UNLESS, drift_duplicate_string("unless"));
+    }
+
+    if (strcmp(value, "when") == 0) {
+        free(value);
+        return make_token(TOKEN_WHEN, drift_duplicate_string("when"));
+    }
+
     if (strcmp(value, "break") == 0) {
         free(value);
         return make_token(TOKEN_BREAK, drift_duplicate_string("break"));

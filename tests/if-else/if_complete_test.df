@@ -4,6 +4,7 @@ if score >= 50 :
     say "pass"
 else :
     say "fail"
+end
 
 // Test 2: Multiple elif
 var grade = 85
@@ -17,13 +18,16 @@ elif grade >= 60 :
     say "D"
 else :
     say "F"
+end
 
 // Test 3: Boolean values
 var flag = true
 if flag :
     say "flag is on"
+end
 
 // Test 4: Comparison
 var num = 42
 if num == 42 :
     say "the answer"
+end

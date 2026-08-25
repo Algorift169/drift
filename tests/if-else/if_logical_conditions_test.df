@@ -7,8 +7,10 @@ elif a < 0 || b > 10 :
     say "second"
 else :
     say "third"
+end
 
 if a == 5 || a == 6 :
     say "yes"
 else :
     say "no"
+end

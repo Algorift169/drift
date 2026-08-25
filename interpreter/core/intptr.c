@@ -1424,6 +1424,14 @@ int interpreter_execute(Statement statement, Environment *environment)
         return interpreter_execute_each(&statement.as.each_statement, environment);
     }
 
+    if (statement.type == STATEMENT_UNLESS) {
+        return interpreter_execute_unless(&statement.as.unless_statement, environment);
+    }
+
+    if (statement.type == STATEMENT_WHEN) {
+        return interpreter_execute_when(&statement.as.when_statement, environment);
+    }
+
 
     /* Declarations and assignments share this path so every stored value enters the environment uniformly. */
     if (statement.type == STATEMENT_VARIABLE_DECLARATION) {

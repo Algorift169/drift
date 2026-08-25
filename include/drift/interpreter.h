@@ -8,6 +8,8 @@
 #include "drift/continue.h"
 #include "drift/control_flow.h"
 #include "drift/each.h"
+#include "drift/unless.h"
+#include "drift/when.h"
 #include "drift/parser.h"
 #include "drift/statement.h"
 

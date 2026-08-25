@@ -3,17 +3,20 @@ while while_index < 4:
     while_index++
     if while_index == 2:
         continue
+    end
     say while_index
 end
 
 for var for_index = 0, for_index < 4, for_index++:
     if for_index == 2:
         continue
+    end
     say for_index
 end
 
 repeat var repeat_index (0...3):
     if repeat_index == 2:
         continue
+    end
     say repeat_index
 end

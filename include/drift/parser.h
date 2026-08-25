@@ -30,6 +30,8 @@ int parse_for_statement(Parser *parser, Statement *statement);
 int parse_while_statement(Parser *parser, Statement *statement);
 // Parses an each statement, including its loop variable, source expression, and body statements.
 int parse_each_statement(Parser *parser, Statement *statement);
+int parse_unless_statement(Parser *parser, Statement *statement);
+int parse_when_statement(Parser *parser, Statement *statement);
 void if_statement_free(IfStatement *statement);
 void repeat_statement_free(RepeatStatement *statement);
 void for_statement_free(ForStatement *statement);
@@ -38,6 +40,8 @@ void while_statement_free(WhileStatement *statement);
 // any dynamically allocated strings. This function should be called when the EachStatement
 // is no longer needed to avoid memory leaks.
 void each_statement_free(EachStatement *statement);
+void unless_statement_free(UnlessStatement *statement);
+void when_statement_free(WhenStatement *statement);
 void print_statement_free(PrintStatement *statement);
 void variable_declaration_free(VariableDeclaration *declaration);
 

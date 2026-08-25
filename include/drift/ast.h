@@ -94,4 +94,27 @@ typedef struct {
     size_t body_count;
 } EachStatement;
 
+/* Stores the deferred condition and body for an unless statement. */
+typedef struct {
+    char *condition_text;
+    struct Statement *body;
+    size_t body_count;
+} UnlessStatement;
+
+/* Stores one value expression and its body for a when case. */
+typedef struct {
+    char *value_text;
+    struct Statement *body;
+    size_t body_count;
+} WhenCase;
+
+/* Stores the subject, ordered cases, and optional else body for when. */
+typedef struct {
+    char *subject_text;
+    WhenCase *cases;
+    size_t case_count;
+    struct Statement *else_body;
+    size_t else_count;
+} WhenStatement;
+
 #endif
