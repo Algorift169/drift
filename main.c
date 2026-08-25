@@ -204,6 +204,8 @@ static void statement_free(Statement *statement)
         for_statement_free(&statement->as.for_statement);
     } else if (statement->type == STATEMENT_WHILE) {
         while_statement_free(&statement->as.while_statement);
+    } else if (statement->type == STATEMENT_EACH) {
+        each_statement_free(&statement->as.each_statement);
     }
 }
 

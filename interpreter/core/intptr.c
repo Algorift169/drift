@@ -1336,11 +1336,6 @@ int interpreter_execute(Statement statement, Environment *environment)
                 fprintf(stderr, "Runtime Error: Undefined variable '%s'.\n", print_statement->value);
                 return 1;
             }
-            if (value.type == VALUE_ARRAY) {
-                fprintf(stderr, "Syntax Error: Array variable '%s' must be accessed explicitly.\n", print_statement->value);
-                value_free(&value);
-                return 1;
-            }
             print_value(&value);
             value_free(&value);
         } else {
@@ -1421,6 +1416,12 @@ int interpreter_execute(Statement statement, Environment *environment)
 
     if (statement.type == STATEMENT_WHILE) {
         return interpreter_execute_while(&statement.as.while_statement, environment);
+    }
+
+    // NEw: each statement execution is handled in the dedicated each module. Continues to the 
+    // next statement if the each statement is not executed.
+    if (statement.type == STATEMENT_EACH) {
+        return interpreter_execute_each(&statement.as.each_statement, environment);
     }
 
 

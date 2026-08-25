@@ -168,6 +168,20 @@ static Token read_identifier(Lexer *lexer)
         return make_token(TOKEN_CONTINUE, drift_duplicate_string("continue"));
     }
 
+    // The following keywords are added to support the "each" loop construct in the Drift programming
+    // language. The "each" keyword is used to iterate over elements in a collection, and the 
+    // "in" keyword is used to specify the collection being iterated over. The "end" keyword is 
+    // used to mark the end of the each loop.
+    if (strcmp(value, "each") == 0) {
+        free(value);
+        return make_token(TOKEN_EACH, drift_duplicate_string("each"));
+    }
+
+    if (strcmp(value, "in") == 0) {
+        free(value);
+        return make_token(TOKEN_IN, drift_duplicate_string("in"));
+    }
+
     if (strcmp(value, "end") == 0) {
         free(value);
         return make_token(TOKEN_END, drift_duplicate_string("end"));

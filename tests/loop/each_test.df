@@ -1,0 +1,8 @@
+each var i in 0...5:
+    say i
+end
+say "================================"
+var names = ["ls", "la", "-a"]
+each var name in names:
+    say name
+end

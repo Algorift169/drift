@@ -1478,6 +1478,15 @@ Statement parser_parse(Parser *parser)
         return statement;
     }
 
+    // Handle the each statement, which is a specialized loop construct.
+    if (token->type == TOKEN_EACH) {
+        // Delegate source and loop-body parsing to the dedicated each parser.
+        if (!parse_each_statement(parser, &statement)) {
+            return statement;
+        }
+        return statement;
+    }
+
     if (token->type == TOKEN_BREAK || token->type == TOKEN_CONTINUE) {
         // Loop control statements carry no payload; consume the keyword and its terminator.
         statement.type = token->type == TOKEN_BREAK ? STATEMENT_BREAK : STATEMENT_CONTINUE;

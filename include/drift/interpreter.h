@@ -7,6 +7,7 @@
 #include "drift/break.h"
 #include "drift/continue.h"
 #include "drift/control_flow.h"
+#include "drift/each.h"
 #include "drift/parser.h"
 #include "drift/statement.h"
 
@@ -18,6 +19,8 @@ Value interpreter_evaluate_expression(Environment *environment, const char *expr
 
 /* Executes the parsed basic for and while loop forms. */
 int interpreter_execute_for(ForStatement *for_statement, Environment *environment);
+// Executes the parsed while loop form. The condition is evaluated before 
+//every iteration, and the body is executed if the condition is truthy. If a nested statement returns DRIFT_EXECUTION_BREAK or DRIFT_EXECUTION_CONTINUE, that result is propagated to the caller so the loop can handle it appropriately.
 int interpreter_execute_while(WhileStatement *while_statement, Environment *environment);
 
 #endif

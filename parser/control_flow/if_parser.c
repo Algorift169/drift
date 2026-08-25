@@ -97,6 +97,11 @@ static void free_statement_list(Statement *body, size_t count)
             for_statement_free(&body[i].as.for_statement);
         } else if (body[i].type == STATEMENT_WHILE) {
             while_statement_free(&body[i].as.while_statement);
+            // The while_statement_free function is responsible for freeing the resources
+            // associated with the WhileStatement, including its body statements and any dynamically allocated 
+            // strings.
+        } else if (body[i].type == STATEMENT_EACH) {
+            each_statement_free(&body[i].as.each_statement);
         }
     }
 

@@ -83,4 +83,15 @@ typedef struct {
     size_t body_count;
 } WhileStatement;
 
+/* Stores the deferred source expression and body for an each loop. */
+typedef struct {
+    char *item_name;
+    char *source_text;
+    char *start_text;
+    char *end_text;
+    int is_range;
+    struct Statement *body;
+    size_t body_count;
+} EachStatement;
+
 #endif

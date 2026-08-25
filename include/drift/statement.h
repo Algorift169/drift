@@ -36,7 +36,8 @@ typedef enum {
     STATEMENT_FOR,
     STATEMENT_WHILE,
     STATEMENT_BREAK,
-    STATEMENT_CONTINUE
+    STATEMENT_CONTINUE,
+    STATEMENT_EACH
 } StatementType;
 
 typedef struct Statement {
@@ -49,6 +50,7 @@ typedef struct Statement {
         RepeatStatement repeat_statement;
         ForStatement for_statement;
         WhileStatement while_statement;
+        EachStatement each_statement; // Added EachStatement to the union to represent each statements in the AST.
     } as;
 } Statement;
 
