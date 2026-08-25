@@ -1478,6 +1478,17 @@ Statement parser_parse(Parser *parser)
         return statement;
     }
 
+    if (token->type == TOKEN_BREAK || token->type == TOKEN_CONTINUE) {
+        // Loop control statements carry no payload; consume the keyword and its terminator.
+        statement.type = token->type == TOKEN_BREAK ? STATEMENT_BREAK : STATEMENT_CONTINUE;
+        parser_advance(parser);
+        token = parser_peek(parser);
+        if (token != NULL && is_statement_terminator(token)) {
+            parser_advance(parser);
+        }
+        return statement;
+    }
+
     if (token->type == TOKEN_VAR) {
         // Parse one or more comma-separated declarations after 'var'.
         parser_advance(parser);

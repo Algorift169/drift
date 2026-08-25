@@ -131,11 +131,13 @@ int parse_while_statement(Parser *parser, Statement *statement)
     Statement *body = NULL;
     size_t body_count = 0;
     size_t body_capacity = 0;
+    size_t block_indentation;
 
     if (parser == NULL || statement == NULL) {
         return 0;
     }
     memset(&while_statement, 0, sizeof(while_statement));
+    block_indentation = parser_peek(parser)->indentation;
     parser_advance(parser);
 
     while_statement.condition_text = read_condition(parser);
@@ -151,20 +153,24 @@ int parse_while_statement(Parser *parser, Statement *statement)
 
     while (1) {
         Token *token = parser_peek(parser);
-        if (token == NULL || token->type == TOKEN_EOF || token->type == TOKEN_END) {
+        if (token == NULL || token->type == TOKEN_EOF) {
             break;
         }
         if (token->type == TOKEN_NEWLINE || token->type == TOKEN_SEMICOLON) {
             parser_advance(parser);
             continue;
         }
+        if (token->type == TOKEN_END || token->type == TOKEN_DOT ||
+            token->indentation <= block_indentation) {
+            break;
+        }
         append_statement(&body, &body_count, &body_capacity, parser_parse(parser));
     }
 
-    if (!parser_expect(parser, TOKEN_END, "Syntax Error: Expected 'end' to close while block.")) {
-        free_statement_list(body, body_count);
-        free(while_statement.condition_text);
-        return 0;
+    if (parser_peek(parser) != NULL &&
+        (parser_peek(parser)->type == TOKEN_END || parser_peek(parser)->type == TOKEN_DOT)) {
+        // `.` is the preferred block terminator; `end` remains valid for compatibility.
+        parser_advance(parser);
     }
 
     while_statement.body = body;

@@ -4,6 +4,9 @@
 #define DRIFT_INTERPRETER_H
 
 #include "drift/environment.h"
+#include "drift/break.h"
+#include "drift/continue.h"
+#include "drift/control_flow.h"
 #include "drift/parser.h"
 #include "drift/statement.h"
 

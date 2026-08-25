@@ -177,7 +177,7 @@ static char *read_expression_until_colon(Parser *parser)
     return result;
 }
 
-static int parse_if_body(Parser *parser, Statement **out_body, size_t *out_count)
+static int parse_if_body(Parser *parser, size_t block_indentation, Statement **out_body, size_t *out_count)
 {
     /* Parse child statements until an elif/else marker or end of input. Those
        structural markers are deliberately left unconsumed for the parent. */
@@ -204,7 +204,8 @@ static int parse_if_body(Parser *parser, Statement **out_body, size_t *out_count
             continue;
         }
 
-        if (token->type == TOKEN_ELIF || token->type == TOKEN_ELSE) {
+        if (token->type == TOKEN_ELIF || token->type == TOKEN_ELSE || token->type == TOKEN_END || token->type == TOKEN_DOT ||
+            token->indentation <= block_indentation) {
             break;
         }
 
@@ -232,12 +233,14 @@ int parse_if_statement(Parser *parser, Statement *statement)
     Statement *body = NULL;
     size_t body_count = 0;
     Token *token;
+    size_t block_indentation;
 
     if (parser == NULL || statement == NULL) {
         return 0;
     }
 
     memset(&if_statement, 0, sizeof(if_statement));
+    block_indentation = parser_peek(parser)->indentation;
     // The caller positioned the parser on 'if'; consume that keyword first.
     parser_advance(parser);
 
@@ -261,7 +264,7 @@ int parse_if_statement(Parser *parser, Statement *statement)
         return 0;
     }
 
-    if (!parse_if_body(parser, &body, &body_count)) {
+    if (!parse_if_body(parser, block_indentation, &body, &body_count)) {
         free(branch.condition_text);
         return 0;
     }
@@ -292,6 +295,7 @@ int parse_if_statement(Parser *parser, Statement *statement)
             Statement *next_body = NULL;
             size_t next_body_count = 0;
             IfBranch *new_branches;
+            size_t next_indentation = token->indentation;
 
             parser_advance(parser);
             next_branch.condition_text = read_expression_until_colon(parser);
@@ -305,7 +309,7 @@ int parse_if_statement(Parser *parser, Statement *statement)
                 if_statement_free(&if_statement);
                 return 0;
             }
-            if (!parse_if_body(parser, &next_body, &next_body_count)) {
+            if (!parse_if_body(parser, next_indentation, &next_body, &next_body_count)) {
                 free(next_branch.condition_text);
                 if_statement_free(&if_statement);
                 return 0;
@@ -337,7 +341,7 @@ int parse_if_statement(Parser *parser, Statement *statement)
                 if_statement_free(&if_statement);
                 return 0;
             }
-            if (!parse_if_body(parser, &else_body, &else_count)) {
+            if (!parse_if_body(parser, token->indentation, &else_body, &else_count)) {
                 if_statement_free(&if_statement);
                 return 0;
             }
@@ -347,6 +351,12 @@ int parse_if_statement(Parser *parser, Statement *statement)
         }
 
         break;
+    }
+
+    if (parser_peek(parser) != NULL &&
+        (parser_peek(parser)->type == TOKEN_END || parser_peek(parser)->type == TOKEN_DOT)) {
+        // `.` is the preferred block terminator; `end` remains valid for compatibility.
+        parser_advance(parser);
     }
 
     statement->type = STATEMENT_IF;

@@ -13,6 +13,8 @@ typedef struct {
     size_t length;
     int in_block_comment;
     int in_block_comment_code;
+    int at_line_start;
+    size_t line_indentation;
 } Lexer;
 
 /* Copies source text and initializes lexer position and comment state. */

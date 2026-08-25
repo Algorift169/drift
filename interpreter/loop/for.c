@@ -5,6 +5,7 @@
 #include <string.h>
 
 #include "drift/interpreter.h"
+#include "drift/control_flow.h"
 #include "drift/operator.h"
 
 static char *trim_copy(const char *text)
@@ -201,11 +202,22 @@ int interpreter_execute_for(ForStatement *for_statement, Environment *environmen
             break;
         }
 
+        int break_loop = 0;
         for (size_t i = 0; i < for_statement->body_count; ++i) {
             int result = interpreter_execute(for_statement->body[i], environment);
-            if (result != 0) {
+            if (result == DRIFT_EXECUTION_BREAK) {
+                break_loop = 1;
+                break;
+            }
+            if (result == DRIFT_EXECUTION_CONTINUE) {
+                break;
+            }
+            if (result != DRIFT_EXECUTION_OK) {
                 return result;
             }
+        }
+        if (break_loop) {
+            break;
         }
         if (!execute_for_increment(for_statement->increment_text, environment)) {
             return 1;

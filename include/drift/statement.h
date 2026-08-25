@@ -34,7 +34,9 @@ typedef enum {
     STATEMENT_IF,
     STATEMENT_REPEAT,
     STATEMENT_FOR,
-    STATEMENT_WHILE
+    STATEMENT_WHILE,
+    STATEMENT_BREAK,
+    STATEMENT_CONTINUE
 } StatementType;
 
 typedef struct Statement {

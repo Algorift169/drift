@@ -12,6 +12,7 @@ propagating errors from nested statements.
 #include <string.h>
 
 #include "drift/interpreter.h"
+#include "drift/control_flow.h"
 #include "drift/repeat.h"
 
 static void strip_whitespace(char *text)
@@ -192,12 +193,28 @@ int interpreter_execute_repeat(RepeatStatement *repeat_statement, Environment *e
             }
             value_free(&counter_value);
 
+            int continue_loop = 0;
+            int break_loop = 0;
             for (size_t j = 0; j < repeat_statement->body_count; ++j) {
                 // Stop immediately if any nested statement reports a runtime error.
                 int result = interpreter_execute(repeat_statement->body[j], environment);
-                if (result != 0) {
+                if (result == DRIFT_EXECUTION_BREAK) {
+                    break_loop = 1;
+                    break;
+                }
+                if (result == DRIFT_EXECUTION_CONTINUE) {
+                    continue_loop = 1;
+                    break;
+                }
+                if (result != DRIFT_EXECUTION_OK) {
                     return result;
                 }
+            }
+            if (break_loop) {
+                break;
+            }
+            if (continue_loop) {
+                continue;
             }
         }
         return 0;
@@ -302,12 +319,28 @@ int interpreter_execute_repeat(RepeatStatement *repeat_statement, Environment *e
             }
             value_free(&counter_value);
 
+            int continue_loop = 0;
+            int break_loop = 0;
             for (size_t j = 0; j < repeat_statement->body_count; ++j) {
                 // A nested failure aborts the repeat immediately.
                 int result = interpreter_execute(repeat_statement->body[j], environment);
-                if (result != 0) {
+                if (result == DRIFT_EXECUTION_BREAK) {
+                    break_loop = 1;
+                    break;
+                }
+                if (result == DRIFT_EXECUTION_CONTINUE) {
+                    continue_loop = 1;
+                    break;
+                }
+                if (result != DRIFT_EXECUTION_OK) {
                     return result;
                 }
+            }
+            if (break_loop) {
+                break;
+            }
+            if (continue_loop) {
+                continue;
             }
         }
     } else if (repeat_statement->is_exclusive_lower) {
@@ -323,12 +356,28 @@ int interpreter_execute_repeat(RepeatStatement *repeat_statement, Environment *e
             }
             value_free(&counter_value);
 
+            int continue_loop = 0;
+            int break_loop = 0;
             for (size_t j = 0; j < repeat_statement->body_count; ++j) {
                 // Preserve the first nonzero result from a nested statement.
                 int result = interpreter_execute(repeat_statement->body[j], environment);
-                if (result != 0) {
+                if (result == DRIFT_EXECUTION_BREAK) {
+                    break_loop = 1;
+                    break;
+                }
+                if (result == DRIFT_EXECUTION_CONTINUE) {
+                    continue_loop = 1;
+                    break;
+                }
+                if (result != DRIFT_EXECUTION_OK) {
                     return result;
                 }
+            }
+            if (break_loop) {
+                break;
+            }
+            if (continue_loop) {
+                continue;
             }
         }
     } else {
@@ -344,12 +393,27 @@ int interpreter_execute_repeat(RepeatStatement *repeat_statement, Environment *e
             }
             value_free(&counter_value);
 
+            int continue_loop = 0;
+            int break_loop = 0;
             for (size_t j = 0; j < repeat_statement->body_count; ++j) {
-                // Continue only while every body statement succeeds.
                 int result = interpreter_execute(repeat_statement->body[j], environment);
-                if (result != 0) {
+                if (result == DRIFT_EXECUTION_BREAK) {
+                    break_loop = 1;
+                    break;
+                }
+                if (result == DRIFT_EXECUTION_CONTINUE) {
+                    continue_loop = 1;
+                    break;
+                }
+                if (result != DRIFT_EXECUTION_OK) {
                     return result;
                 }
+            }
+            if (break_loop) {
+                break;
+            }
+            if (continue_loop) {
+                continue;
             }
         }
     }

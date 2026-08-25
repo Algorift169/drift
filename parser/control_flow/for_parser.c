@@ -143,7 +143,7 @@ static char *read_clause(Parser *parser, TokenType stop)
     return result;
 }
 
-static int parse_for_body(Parser *parser, Statement **out_body, size_t *out_count)
+static int parse_for_body(Parser *parser, size_t block_indentation, Statement **out_body, size_t *out_count)
 {
     /* The body parser leaves 'end' for parse_for_statement to consume. */
     Statement *body = NULL;
@@ -155,12 +155,16 @@ static int parse_for_body(Parser *parser, Statement **out_body, size_t *out_coun
     }
     while (1) {
         Token *token = parser_peek(parser);
-        if (token == NULL || token->type == TOKEN_EOF || token->type == TOKEN_END) {
+        if (token == NULL || token->type == TOKEN_EOF) {
             break;
         }
         if (token->type == TOKEN_NEWLINE || token->type == TOKEN_SEMICOLON) {
             parser_advance(parser);
             continue;
+        }
+        if (token->type == TOKEN_END || token->type == TOKEN_DOT ||
+            token->indentation <= block_indentation) {
+            break;
         }
         append_statement(&body, &count, &capacity, parser_parse(parser));
     }
@@ -179,11 +183,13 @@ int parse_for_statement(Parser *parser, Statement *statement)
     ForStatement for_statement;
     Statement *body = NULL;
     size_t body_count = 0;
+    size_t block_indentation;
 
     if (parser == NULL || statement == NULL) {
         return 0;
     }
     memset(&for_statement, 0, sizeof(for_statement));
+    block_indentation = parser_peek(parser)->indentation;
     parser_advance(parser);
 
     int has_parentheses = 0;
@@ -221,13 +227,11 @@ int parse_for_statement(Parser *parser, Statement *statement)
         free(for_statement.increment_text);
         return 0;
     }
-    parse_for_body(parser, &body, &body_count);
-    if (!parser_expect(parser, TOKEN_END, "Syntax Error: Expected 'end' to close for block.")) {
-        free_statement_list(body, body_count);
-        free(for_statement.init_text);
-        free(for_statement.condition_text);
-        free(for_statement.increment_text);
-        return 0;
+    parse_for_body(parser, block_indentation, &body, &body_count);
+    if (parser_peek(parser) != NULL &&
+        (parser_peek(parser)->type == TOKEN_END || parser_peek(parser)->type == TOKEN_DOT)) {
+        // `.` is the preferred block terminator; `end` remains valid for compatibility.
+        parser_advance(parser);
     }
 
     for_statement.body = body;

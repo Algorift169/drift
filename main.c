@@ -257,6 +257,10 @@ static int execute_source(const char *source, Environment *environment)
         statement = parser_parse(&parser);
         result = interpreter_execute(statement, environment);
         statement_free(&statement);
+        if (result == DRIFT_EXECUTION_BREAK || result == DRIFT_EXECUTION_CONTINUE) {
+            fprintf(stderr, "Runtime Error: Loop control statement used outside a loop.\n");
+            result = DRIFT_EXECUTION_ERROR;
+        }
         if (result != 0) {
             break;
         }

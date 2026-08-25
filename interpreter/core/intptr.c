@@ -1172,6 +1172,14 @@ int interpreter_execute(Statement statement, Environment *environment)
         return 1;
     }
 
+    if (statement.type == STATEMENT_BREAK) {
+        return interpreter_execute_break();
+    }
+
+    if (statement.type == STATEMENT_CONTINUE) {
+        return interpreter_execute_continue();
+    }
+
     /* Input prompts are interpolated before the input subsystem stores values. */
     if (statement.type == STATEMENT_INPUT) {
         InputStatement *input_statement = &statement.as.input_statement;

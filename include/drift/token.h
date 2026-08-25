@@ -23,6 +23,8 @@ typedef enum {
     TOKEN_REPEAT,
     TOKEN_FOR,
     TOKEN_WHILE,
+    TOKEN_BREAK,
+    TOKEN_CONTINUE,
     TOKEN_END,
     TOKEN_AT,
     TOKEN_IN,
@@ -92,6 +94,7 @@ typedef enum {
 typedef struct {
     TokenType type;
     char *value;
+    size_t indentation;
 } Token;
 
 char *drift_duplicate_string(const char *value);

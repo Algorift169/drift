@@ -52,6 +52,8 @@ Lexer lexer_create(const char *source)
     lexer.length = 0;
     lexer.in_block_comment = 0;
     lexer.in_block_comment_code = 0;
+    lexer.at_line_start = 1;
+    lexer.line_indentation = 0;
 
     if (source != NULL) {
         while (source[lexer.length] != '\0') {
@@ -65,6 +67,14 @@ Lexer lexer_create(const char *source)
 /* Advances past separators while preserving newlines needed by the parser. */
 static void skip_whitespace(Lexer *lexer)
 {
+    if (lexer->at_line_start) {
+        lexer->line_indentation = 0;
+        while (lexer->index < lexer->length && (lexer->source[lexer->index] == ' ' || lexer->source[lexer->index] == '\t')) {
+            lexer->index++;
+            lexer->line_indentation++;
+        }
+        lexer->at_line_start = 0;
+    }
     while (lexer->index < lexer->length && is_space(lexer->source[lexer->index])) {
         lexer->index++;
     }
@@ -146,6 +156,16 @@ static Token read_identifier(Lexer *lexer)
     if (strcmp(value, "while") == 0) {
         free(value);
         return make_token(TOKEN_WHILE, drift_duplicate_string("while"));
+    }
+
+    if (strcmp(value, "break") == 0) {
+        free(value);
+        return make_token(TOKEN_BREAK, drift_duplicate_string("break"));
+    }
+
+    if (strcmp(value, "continue") == 0) {
+        free(value);
+        return make_token(TOKEN_CONTINUE, drift_duplicate_string("continue"));
     }
 
     if (strcmp(value, "end") == 0) {
@@ -377,6 +397,9 @@ Token *lexer_scan_all(Lexer *lexer, size_t *token_count)
         if (is_newline(lexer->source[lexer->index])) {
             tokens[count++] = make_token(TOKEN_NEWLINE, NULL);
             lexer->index++;
+            tokens[count - 1U].indentation = lexer->line_indentation;
+            lexer->at_line_start = 1;
+            lexer->line_indentation = 0;
             if (count >= capacity) {
                 Token *new_tokens;
                 capacity *= 2;
@@ -603,6 +626,8 @@ Token *lexer_scan_all(Lexer *lexer, size_t *token_count)
             token_free_array(tokens, count);
             return NULL;
         }
+
+        tokens[count - 1U].indentation = lexer->line_indentation;
 
         if (count >= capacity) {
             Token *new_tokens;

@@ -201,7 +201,7 @@ static int parse_repeat_body(Parser *parser, Statement **out_body, size_t *out_c
             parser_advance(parser);
             continue;
         }
-        if (token->type == TOKEN_END) {
+        if (token->type == TOKEN_END || token->type == TOKEN_DOT) {
             break;
         }
 
@@ -410,13 +410,10 @@ int parse_repeat_statement(Parser *parser, Statement *statement)
         return 0;
     }
 
-    if (!parser_expect(parser, TOKEN_END, "Syntax Error: Expected 'end' to close repeat block.")) {
-        free_statement_list(body, body_count);
-        free(repeat_statement.counter_name);
-        free(repeat_statement.start_text);
-        free(repeat_statement.end_text);
-        free(repeat_statement.step_text);
-        return 0;
+    if (parser_peek(parser) != NULL &&
+        (parser_peek(parser)->type == TOKEN_END || parser_peek(parser)->type == TOKEN_DOT)) {
+        // `.` is the preferred block terminator; `end` remains valid for compatibility.
+        parser_advance(parser);
     }
 
     repeat_statement.body = body;
