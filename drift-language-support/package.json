@@ -9,6 +9,12 @@
 
   "publisher": "Algorift169",
 
+  "main": "./extension.js",
+
+  "activationEvents": [
+    "onLanguage:drift"
+  ],
+
   "engines": {
     "vscode": "^1.80.0"
   },
@@ -48,6 +54,26 @@
       {
         "language": "drift",
         "path": "./snippets/drift.json"
+      }
+    ],
+
+    "commands": [
+      {
+        "command": "drift.exitOneBlock",
+        "title": "Drift: Exit One Block"
+      }
+    ],
+
+    "keybindings": [
+      {
+        "command": "drift.exitOneBlock",
+        "key": "shift+enter",
+        "when": "editorTextFocus && editorLangId == drift"
+      },
+      {
+        "command": "drift.enter",
+        "key": "enter",
+        "when": "editorTextFocus && editorLangId == drift"
       }
     ]
   }

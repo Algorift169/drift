@@ -119,7 +119,7 @@
       "patterns": [
         {
           "name": "keyword.control.drift",
-          "match": "\\b(say|ask|var|if|elif|else|repeat|for|while|end)\\b"
+          "match": "\\b(say|ask|var|if|elif|else|repeat|for|while|each|in|unless|when|break|continue|end)\\b"
         },
         {
           "name": "keyword.operator.logical.drift",

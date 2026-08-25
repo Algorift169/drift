@@ -26,7 +26,28 @@
     ["'", "'"]
   ],
   "indentationRules": {
-    "increaseIndentPattern": "^.*(:|\\b(if|elif|else|repeat|for|while|func|match|case)\\b).*?$",
-    "decreaseIndentPattern": "^\\s*(end\\b|else\\b|elif\\b|case\\b).*?$"
+    "increaseIndentPattern": "^\\s*(?:(?:if|elif|else|repeat|for|while|each|unless|when)\\b.*|.*:)\\s*$",
+    "decreaseIndentPattern": "^\\s*(?:end\\b|else\\b|elif\\b|case\\b)"
+  },
+  "onEnterRules": [
+    {
+      "beforeText": "^\\s*(?:if|elif|else|repeat|for|while|each|unless|when)\\b.*:\\s*$",
+      "action": {
+        "indentAction": 1
+      }
+    },
+    {
+      "beforeText": "^\\s*(?:[^:]+):\\s*$",
+      "afterText": "^\\s*(?:\\d+|true|false|string|[A-Za-z_][A-Za-z0-9_-]*)\\s*:\\s*$",
+      "action": {
+        "indentAction": 1
+      }
+    }
+  ],
+  "folding": {
+    "markers": {
+      "start": "^\\s*(?:if|unless|when|repeat|for|while|each)\\b.*:\\s*$",
+      "end": "^\\s*end\\b"
+    }
   }
 }

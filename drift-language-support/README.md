@@ -16,6 +16,8 @@ The current extension provides:
 - `.df` file recognition
 - basic syntax highlighting for Drift keywords, operators, strings, numbers, comments, and identifiers
 - bracket matching and comment configuration via the language configuration file
+- indentation support for Drift blocks
+- `Shift+Enter` to exit one indentation block at a time when starting the next statement outside a block
 
 ## Install locally
 
